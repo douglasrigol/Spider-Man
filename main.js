@@ -255,75 +255,9 @@ for (let i = 1; i <= FRAME_COUNT; i++) {
   frames.push(img);
 }
 
-/* --------------------------------------------------------------------------
-   FAIXA DO FRAME NA TELA EM PÉ
-   O frame é 16:9; cobrindo uma tela em pé ele vira só um recorte do rosto e o
-   título e a sinopse ficariam por cima dele. Em pé, o frame inteiro é
-   desenhado na largura do palco, numa faixa entre o título e a sinopse, e o
-   resto do palco é preenchido com a cor dos cantos do próprio frame (branco
-   no começo, preto no fim). No desktop nada disso é usado.
-   -------------------------------------------------------------------------- */
-let band = null;    // { top, h } em px de CSS, relativo ao .stage (null = desktop)
-
-const cornerCache = new WeakMap();
-const probe = document.createElement("canvas");
-probe.width = 2;
-probe.height = 2;
-const pctx = probe.getContext("2d", { willReadFrequently: true });
-
-function cornerColors(img) {
-  let c = cornerCache.get(img);
-  if (c) return c;
-  c = { top: "#f2f2f2", bottom: "#f2f2f2" };
-  try {
-    const iw = img.naturalWidth, ih = img.naturalHeight;
-    const bw = iw * 0.06, bh = ih * 0.05;
-    pctx.clearRect(0, 0, 2, 2);
-    pctx.drawImage(img, 0, 0, bw, bh, 0, 0, 1, 1);
-    pctx.drawImage(img, iw - bw, 0, bw, bh, 1, 0, 1, 1);
-    pctx.drawImage(img, 0, ih - bh, bw, bh, 0, 1, 1, 1);
-    pctx.drawImage(img, iw - bw, ih - bh, bw, bh, 1, 1, 1, 1);
-    const d = pctx.getImageData(0, 0, 2, 2).data;
-    const avg = (a, b) => `rgb(${(d[a] + d[b]) >> 1},${(d[a + 1] + d[b + 1]) >> 1},${(d[a + 2] + d[b + 2]) >> 1})`;
-    c = { top: avg(0, 4), bottom: avg(8, 12) };
-  } catch (e) { /* canvas bloqueado: fica o cinza do palco */ }
-  cornerCache.set(img, c);
-  return c;
-}
-
-function drawBand(img, alpha) {
-  const cw = canvas.width, ch = canvas.height;
-  const k  = cw / Math.max(1, canvas.clientWidth);        // CSS px -> px do buffer
-  const bandTop = band.top * k, bandH = band.h * k;
-  const iw = img.naturalWidth, ih = img.naturalHeight;
-
-  /* faixa baixa: o frame inteiro cabe; faixa alta: preenche a altura da faixa
-     e corta um pouco das laterais (até 35%), onde só há fundo */
-  const s0 = cw / iw, sh = bandH / ih;
-  const scale = sh <= s0 ? sh : Math.min(sh, s0 * 1.35);
-  const w = iw * scale, h = ih * scale;
-  const x = (cw - w) / 2;
-  const y = bandTop + (bandH - h) / 2;
-  const c = cornerColors(img);
-
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = c.top;
-  ctx.fillRect(0, 0, cw, y);
-  ctx.fillStyle = c.bottom;
-  ctx.fillRect(0, y + h, cw, ch - (y + h));
-  const g = ctx.createLinearGradient(0, y, 0, y + h);
-  g.addColorStop(0, c.top);
-  g.addColorStop(1, c.bottom);
-  ctx.fillStyle = g;
-  ctx.fillRect(0, y, cw, h);
-  ctx.drawImage(img, x, y, w, h);
-  ctx.globalAlpha = 1;
-}
-
 /* Desenha a imagem cobrindo o canvas (equivalente a background-size: cover) */
 function drawCover(img, alpha) {
   if (!img || !img.naturalWidth) return;
-  if (band) return drawBand(img, alpha);
 
   const cw = canvas.width;
   const ch = canvas.height;
@@ -342,7 +276,8 @@ function render() {
   const i    = Math.min(Math.floor(playhead.frame), LAST_FRAME);
   const frac = playhead.frame - i;
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  /* Sem clearRect: o frame cobre o canvas inteiro e, se algum ainda não
+     chegou, o anterior continua na tela em vez de piscar. */
   drawCover(frames[i], 1);
 
   /* mistura o frame seguinte por cima, na proporção da fração */
@@ -352,28 +287,25 @@ function render() {
 /* O canvas é dimensionado em CSS (100% do .stage); aqui ajustamos o buffer
    interno para a densidade de pixels da tela. */
 function resizeCanvas() {
-  // Use clientWidth/Height (tamanho CSS sem transforms aplicados pelos
-  // ancestrais) para evitar redimensionar o buffer por escalonamentos de
-  // transform (ex.: ScrollSmoother). Depois multiplica pelo DPR para o
-  // buffer interno do canvas.
+  /* Mede o .stage (o canvas é 100% dele) e só mexe no buffer quando o tamanho
+     de fato mudou: reatribuir canvas.width limpa a imagem e, durante a
+     rolagem no celular (barra de endereço), isso fazia os frames piscarem. */
   const dpr  = Math.min(window.devicePixelRatio || 1, 2);
-  /* solta o tamanho fixo da medida anterior, senão o canvas não acompanha
-     o palco quando a janela muda (girar o celular, modo responsivo) */
+  const cssW = Math.max(1, Math.round(stage.clientWidth));
+  const cssH = Math.max(1, Math.round(stage.clientHeight));
+  const bw = Math.round(cssW * dpr), bh = Math.round(cssH * dpr);
+
+  if (canvas.width === bw && canvas.height === bh) return;
+
+  canvas.width  = bw;
+  canvas.height = bh;
   canvas.style.width  = "";
   canvas.style.height = "";
-  const cssW = Math.max(1, Math.round(canvas.clientWidth));
-  const cssH = Math.max(1, Math.round(canvas.clientHeight));
-
-  canvas.width  = cssW * dpr;
-  canvas.height = cssH * dpr;
-  canvas.style.width  = cssW + 'px';
-  canvas.style.height = cssH + 'px';
 
   // Reaplica configurações que são resetadas ao alterar width/height
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
-  measureBand();
   render();
 }
 
@@ -509,8 +441,9 @@ function applyStageClip() {
   clipPathEl.setAttribute("d", stageClipPath(w, h, { xTL, b, xTR, d, xBL, f, R: 22 }));
 }
 
-/* Em pé: acha o espaço entre o título e a sinopse, onde ficam o frame e,
-   depois, o trailer. Medido com x = 0. */
+/* Em pé o trailer abre como uma faixa horizontal com a largura inteira do
+   shape, entre o título e a sinopse. Medido com x = 0. */
+let band = null;      // { top, h } em px, relativo ao .stage (null = desktop)
 let trailerH = 0;
 
 function measureBand() {
@@ -519,7 +452,7 @@ function measureBand() {
   const st = stage.getBoundingClientRect();
   const tb = title.getBoundingClientRect();
   const xb = textBox.getBoundingClientRect();
-  const gap = 12;
+  const gap = 8;
 
   let top = tb.bottom - st.top + gap;
   let bottom = xb.top - st.top - gap;
@@ -528,7 +461,7 @@ function measureBand() {
     bottom = st.height * 0.62;
   }
   band = { top, h: bottom - top };
-  trailerH = Math.min(st.width / 2, band.h);
+  trailerH = Math.round(Math.min(st.width * 0.66, band.h));
 
   const cy = stage.offsetTop + top + band.h / 2;     // centro, em coordenadas da .hero
   reveal.style.setProperty("--reveal-cy", cy + "px");
@@ -548,8 +481,7 @@ function measurePush() {
   measureBand();
 
   if (band) {
-    /* Em pé, o trailer abre numa faixa entre o título e a sinopse: nada é
-       empurrado para os lados. */
+    /* Em pé, o trailer abre numa faixa horizontal: nada é empurrado. */
     titleGap = textsGap = 1e9;
   } else {
     titleGap = centerX - title.getBoundingClientRect().right;
@@ -566,7 +498,6 @@ function measurePush() {
     reveal.style.removeProperty("--reveal-cy");
     reveal.style.removeProperty("--frame-w");
   }
-  render();
 }
 
 function applyReveal() {
@@ -1049,9 +980,16 @@ if (document.fonts && document.fonts.ready) {
 let lastWidth = window.innerWidth;
 let resizeTimer;
 
+let resizeRaf = 0;
 window.addEventListener("resize", () => {
-  resizeCanvas();
-  castMedia.style.setProperty("--media-h", castMedia.clientHeight + "px");
+  /* no máximo uma vez por quadro: a barra de endereço do celular dispara
+     vários resizes enquanto a página rola */
+  if (!resizeRaf) resizeRaf = requestAnimationFrame(() => {
+    resizeRaf = 0;
+    resizeCanvas();
+    const mh = castMedia.clientHeight + "px";
+    if (castMedia.style.getPropertyValue("--media-h") !== mh) castMedia.style.setProperty("--media-h", mh);
+  });
 
   if (window.innerWidth === lastWidth) return;
   lastWidth = window.innerWidth;
