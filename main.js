@@ -91,40 +91,25 @@ function layoutPreloaderPortrait() {
   if (!preloader || !web) return;
 
   const W = preloader.clientWidth, H = preloader.clientHeight;
-  const m = W * 0.035;                         // margem lateral: nada é cortado
   const k = 0.95;
   const L = { x: 0.61, y: 0.68 };              // ponto dos dedos, em fração da mão
 
-  /* Mesma composição do desktop, em horizontal: teia à esquerda, mão girada
-     60° à direita e o fio subindo 21° até os dedos. A mão e a teia são
-     medidas para caber inteiras na largura. */
-  const ww = Math.min(W * 0.52, 380);          // largura da teia desenhada
-  const S = { x: m + ww * 0.56, y: H * 0.62 }; // centro da teia (tela)
+  /* Mesma composição do desktop: mão girada 60° encostada no canto de cima à
+     direita (cortada pela borda, como lá), teia no canto de baixo à esquerda
+     e o fio cruzando a tela inteira até o meio dos dedos. As duas artes ficam
+     na horizontal, sem giro extra. */
+  const ww = Math.min(W * 0.6, 440);           // largura da teia desenhada
+  const S = { x: W * 0.13, y: H * 0.9 };       // centro da teia (tela)
   const rot = 60;
   const r = rot * Math.PI / 180;
-  const cr = Math.abs(Math.cos(r)), sr = Math.abs(Math.sin(r));
-  const dir = { x: Math.cos(21 * Math.PI / 180), y: -Math.sin(21 * Math.PI / 180) };
-
-  let best = null;
-  for (let f = 0.46; f >= 0.2 && !best; f -= 0.02) {
-    const hw = Math.min(W * f, 340), hh = hw * 83 / 76;
-    const ox = (L.x - 0.5) * hw, oy = (L.y - 0.5) * hh;
-    const halfW = k * (cr * hw + sr * hh) / 2;
-    for (let len = W; len >= W * 0.3; len -= 2) {
-      const K = { x: S.x + len * dir.x, y: S.y + len * dir.y };
-      const C = {
-        x: K.x - k * (ox * Math.cos(r) - oy * Math.sin(r)),
-        y: K.y - k * (ox * Math.sin(r) + oy * Math.cos(r))
-      };
-      if (C.x + halfW <= W - m) { best = { hw, hh, K, C, halfW }; break; }
-    }
-  }
-  if (!best) {                                  // tela minúscula: usa o menor
-    const hw = W * 0.2, hh = hw * 83 / 76;
-    const K = { x: S.x + W * 0.22 * dir.x, y: S.y + W * 0.22 * dir.y };
-    best = { hw, hh, K, C: { x: K.x, y: K.y }, halfW: hw };
-  }
-  const { hw, hh, K, C, halfW } = best;
+  const hw = Math.min(W * 0.66, 400), hh = hw * 83 / 76;
+  const K = { x: W * 0.9, y: Math.max(H * 0.3, hw * 0.5) };   // fio termina nos dedos
+  const ox = (L.x - 0.5) * hw, oy = (L.y - 0.5) * hh;
+  const C = {
+    x: K.x - k * (ox * Math.cos(r) - oy * Math.sin(r)),
+    y: K.y - k * (ox * Math.sin(r) + oy * Math.cos(r))
+  };
+  const halfW = k * (Math.abs(Math.cos(r)) * hw + Math.abs(Math.sin(r)) * hh) / 2;
 
   preloaderShift = W - C.x + halfW + 10;        // começa inteira fora da tela
 
