@@ -872,7 +872,7 @@ body {
   .movie__texts {
     width: min(100%, 520px);
     margin-top: 0;
-    font-size: clamp(15px, 4.1vw, 21px);
+    font-size: clamp(14px, 3.7vw, 19px);
     height: calc(6 * 1.5em);   /* 6 linhas: cabe o texto mais longo */
     text-align: center;
   }
@@ -897,7 +897,7 @@ body {
      tarja preta gravada; a escala corta a maior parte dela. */
   .reveal {
     top: var(--reveal-cy, 50%);
-    border-radius: 18px;
+    border-radius: 22px;
   }
   .reveal__frame { width: var(--frame-w, 100vw); }
   .reveal__video { transform: scale(1.12); }
