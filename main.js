@@ -75,6 +75,31 @@ const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").match
 const isPortraitMobile = () =>
   window.matchMedia("(orientation: portrait) and (max-width: 1024px)").matches;
 
+/* Em pé, a mão anda pouco mais da metade da largura dela (no desktop são 300px
+   de 600u, também a metade) e o fio da teia é apontado para a palma. */
+const handShiftMobile = () => -preloaderHand.offsetWidth * 0.55;
+
+function aimWebAtHand() {
+  const svg = document.querySelector(".preloader__web");
+  const m = svg && svg.getScreenCTM();
+  if (!m) return;
+
+  const w = preloaderHand.offsetWidth;
+  const h = w * 83 / 76;                       // proporção do mao-homem-aranha.svg
+  const cx = preloaderHand.offsetLeft + w / 2 + handShiftMobile();
+  const cy = preloaderHand.offsetTop + h / 2;
+
+  /* ponto da palma no desenho, girado 60° e reduzido a 95% como no CSS */
+  const a = 60 * Math.PI / 180, k = 0.95, dx = -0.05 * w, dy = 0.25 * h;
+  const px = cx + k * (dx * Math.cos(a) - dy * Math.sin(a));
+  const py = cy + k * (dx * Math.sin(a) + dy * Math.cos(a));
+
+  const p = new DOMPoint(px, py).matrixTransform(m.inverse());
+  preloaderWebLine.setAttribute("d", `M290.001 1012.34L${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
+}
+
+if (preloader && isPortraitMobile()) aimWebAtHand();
+
     /* Entrada: a mão aparece antes da teia; linha e ponta ficam escondidas. */
 if (preloader && !reduceMotion) {
 
@@ -161,7 +186,7 @@ function updatePreloaderAnimation(pct) {
     /* no desktop a mão anda 300px; em pé ela anda proporcional ao tamanho
        dela, até a ponta do fio da teia */
     gsap.to(preloaderHand, {
-      x: isPortraitMobile() ? -preloaderHand.offsetWidth * 1.67 : -300,
+      x: isPortraitMobile() ? handShiftMobile() : -300,
       y: 0,
       duration: 0.7,
       ease: "power2.out"
@@ -338,6 +363,80 @@ const setTextsX = gsap.quickSetter(textBox, "x", "px");
 let titleGap = 0;   // do centro do .stage até a borda DIREITA do logo
 let textsGap = 0;   // do centro do .stage até a borda ESQUERDA da sinopse
 let pushPad  = 0;   // folga entre a borda da máscara e o conteúdo
+
+/* --------------------------------------------------------------------------
+   SHAPE DO PALCO NA TELA EM PÉ
+   O caminho original foi desenhado para 1856 x 1016. Numa tela em pé ele
+   esticaria e os recortes ficariam enormes, então aqui ele é redesenhado com
+   a mesma lógica (cantos arredondados + três recortes em "S"), mas com cada
+   recorte do tamanho do que mora dentro dele: logo, menu e lançamento.
+   No desktop o caminho original volta intacto.
+   -------------------------------------------------------------------------- */
+const clipPathEl = document.querySelector("#stage-clip path");
+const CLIP_DESKTOP = clipPathEl ? clipPathEl.getAttribute("d") : "";
+
+function stageClipPath(w, h, o) {
+  const K = 0.5523;   // cúbica que aproxima um quarto de círculo
+  const n = (x, y) => (x / w).toFixed(5) + " " + (y / h).toFixed(5);
+  const out = [];
+  let cx = 0, cy = 0;
+  const M = (x, y) => { out.push("M" + n(x, y)); cx = x; cy = y; };
+  const L = (x, y) => { out.push("L" + n(x, y)); cx = x; cy = y; };
+  /* quarto de círculo até (x, y): u = direção na saída, v = direção na chegada */
+  const Q = (x, y, ux, uy, vx, vy, t) => {
+    out.push("C" + n(cx + K * t * ux, cy + K * t * uy) + " " + n(x - K * t * vx, y - K * t * vy) + " " + n(x, y));
+    cx = x; cy = y;
+  };
+  const { xTL, b, xTR, d, xBL, f, R } = o;
+
+  M(xTL + b / 2, 0);
+  L(xTR - d / 2, 0);
+  Q(xTR, d / 2, 1, 0, 0, 1, d / 2);            // recorte do menu
+  Q(xTR + d / 2, d, 0, 1, 1, 0, d / 2);
+  L(w - R, d);
+  Q(w, d + R, 1, 0, 0, 1, R);
+  L(w, h - R);
+  Q(w - R, h, 0, 1, -1, 0, R);
+  L(xBL + f / 2, h);
+  Q(xBL, h - f / 2, -1, 0, 0, -1, f / 2);      // recorte do lançamento
+  Q(xBL - f / 2, h - f, 0, -1, -1, 0, f / 2);
+  L(R, h - f);
+  Q(0, h - f - R, -1, 0, 0, -1, R);
+  L(0, b + R);
+  Q(R, b, 0, -1, 1, 0, R);
+  L(xTL - b / 2, b);
+  Q(xTL, b / 2, 1, 0, 0, -1, b / 2);           // recorte do logo
+  Q(xTL + b / 2, 0, 0, -1, 1, 0, b / 2);
+  out.push("Z");
+  return out.join(" ");
+}
+
+function applyStageClip() {
+  if (!clipPathEl) return;
+  if (!isPortraitMobile()) { clipPathEl.setAttribute("d", CLIP_DESKTOP); return; }
+
+  const st = stage.getBoundingClientRect();
+  const br = document.querySelector(".brand").getBoundingClientRect();
+  const nv = document.querySelector(".nav").getBoundingClientRect();
+  const rl = document.querySelector(".release").getBoundingClientRect();
+  const w = st.width, h = st.height;
+
+  const b = br.bottom - st.top + 8;            // altura de cada recorte
+  const d = nv.bottom - st.top + 8;
+  const f = st.bottom - rl.top + 8;
+  let xTL = br.right - st.left + 6 + b / 2;    // centro do "S" de cada recorte
+  let xTR = nv.left - st.left - 6 - d / 2;
+  const xBL = rl.right - st.left + 10 + f / 2;
+
+  /* tela muito estreita: os dois recortes de cima se encontram no meio */
+  if (xTL + b / 2 > xTR - d / 2) {
+    const mid = (xTL + b / 2 + xTR - d / 2) / 2;
+    xTL = mid - b / 2;
+    xTR = mid + d / 2;
+  }
+
+  clipPathEl.setAttribute("d", stageClipPath(w, h, { xTL, b, xTR, d, xBL, f, R: 22 }));
+}
 
 /* Medido com x = 0, senão as medidas saem contaminadas pelo próprio empurrão */
 function measurePush() {
@@ -540,6 +639,7 @@ function buildTimeline() {
   gsap.set(badge, { opacity: 1 });
 
   /* --- estado inicial do ato 2 --- */
+  applyStageClip();
   gsap.set([title, textBox], { x: 0 });
   measurePush();
   rv.w = 0;
