@@ -1,983 +1,985 @@
 /* ==========================================================================
    Spider-Man — Um Novo Dia
-   Animações de rolagem com GSAP.
+   Layout do Figma: 1920 x 1080 por seção.
 
-   - ScrollSmoother  → rolagem suave da página inteira
-   - ScrollTrigger   → a Hero fica pinnada enquanto a animação acontece
-   - SplitText       → troca de sinopse letra a letra, em ordem aleatória
+   Toda medida é escrita em unidades de design (px do Figma) multiplicadas
+   por --u, que vale 1px quando a página tem 1920px de largura.
 
-   A Hero fica pinnada durante dois atos, os dois na MESMA timeline:
-
-     ATO 1 → a sequência de frames roda no .stage enquanto as três sinopses
-             se trocam letra a letra. As duas animações ocupam o ato inteiro,
-             de 0 a ACT_1, então têm exatamente o mesmo início e o mesmo fim.
-
-     ATO 2 → uma máscara preta abre do centro e revela o trailer, empurrando
-             o logo para a esquerda e a sinopse para a direita.
+   As seções ocupam 100% da altura da tela; por isso as posições verticais
+   são ancoradas (topo / base / centro) em vez de usarem um "top" fixo.
    ========================================================================== */
 
-gsap.registerPlugin(ScrollTrigger, ScrollSmoother, SplitText, DrawSVGPlugin);
-
-// ScrollSmoother -> suave rolagem
-/* ==========================================================================
-   1 — ROLAGEM SUAVE
-   ========================================================================== */
-const smoother = ScrollSmoother.create({
-  wrapper: "#smooth-wrapper",
-  content: "#smooth-content",
-  smooth: 2,          // segundos que a página leva para "alcançar" a rolagem
-  effects: true,
-  normalizeScroll: true
-});
-
-/* Trava o scroll até o preloader liberar a página (ver seção 6, no fim). */
-smoother.paused(true);
-
+@font-face {
+  font-family: "Good Times";
+  src: url("assets/good-times.otf") format("opentype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
 
 /* ==========================================================================
-   2 — SEQUÊNCIA DE FRAMES (o "vídeo" do plano de fundo do .stage)
-   ========================================================================== */
-const FRAME_COUNT = 59;
-const LAST_FRAME  = FRAME_COUNT - 1;
-
-/* O enquadramento vertical repete o antigo background-position: 50% 66.9% */
-const FOCUS_X = 0.5;
-const FOCUS_Y = 0.669;
-
-const canvas = document.querySelector(".stage__canvas");
-const ctx    = canvas.getContext("2d", { alpha: false });
-// Melhorar qualidade ao redimensionar/imprimir imagens no canvas
-ctx.imageSmoothingEnabled = true;
-ctx.imageSmoothingQuality = 'high';
-
-/* --------------------------------------------------------------------------
    PRELOADER
-   Conta os 59 frames + a fonte custom (document.fonts.ready) — cada um soma
-   1 em LOADED_TOTAL. O número na tela não pula direto pro valor real: ele
-  "persegue" o progresso com um tween suave (displayed.pct) e fica travado
-  em no máximo 99% até o ÚLTIMO item chegar. Depois de uma breve espera,
-  completa o 1% final e dispara revealSite(), que puxa a cortina e libera o scroll.
-   -------------------------------------------------------------------------- */
-const preloader       = document.querySelector("#preloader");
-const preloaderCount  = document.querySelector(".preloader__count");
-const preloaderTitle  = document.querySelector(".preloader__title");
-const preloaderHand   = document.querySelector(".preloader__hand");
-const preloaderWebTip = document.querySelector(".preloader__web-tip");   
-const preloaderWebLine= document.querySelector(".preloader__web-line");  
-
-const LOADED_TOTAL = FRAME_COUNT + 1; // 59 frames + 1 (fonte)
-let loadedItems = 0;
-
-
-const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-/* Celular e tablet em pé: mesmo corte do @media do style.css */
-const isPortraitMobile = () =>
-  window.matchMedia("(orientation: portrait) and (max-width: 1024px)").matches;
-
-/* Em pé, a mão anda pouco mais da metade da largura dela (no desktop são 300px
-   de 600u, também a metade) e o fio da teia é apontado para a palma. */
-const handShiftMobile = () => -preloaderHand.offsetWidth * 0.55;
-
-function aimWebAtHand() {
-  const svg = document.querySelector(".preloader__web");
-  const m = svg && svg.getScreenCTM();
-  if (!m) return;
-
-  const w = preloaderHand.offsetWidth;
-  const h = w * 83 / 76;                       // proporção do mao-homem-aranha.svg
-  const cx = preloaderHand.offsetLeft + w / 2 + handShiftMobile();
-  const cy = preloaderHand.offsetTop + h / 2;
-
-  /* ponto da palma no desenho, girado 60° e reduzido a 95% como no CSS */
-  const a = 60 * Math.PI / 180, k = 0.95, dx = -0.05 * w, dy = 0.25 * h;
-  const px = cx + k * (dx * Math.cos(a) - dy * Math.sin(a));
-  const py = cy + k * (dx * Math.sin(a) + dy * Math.cos(a));
-
-  const p = new DOMPoint(px, py).matrixTransform(m.inverse());
-  preloaderWebLine.setAttribute("d", `M290.001 1012.34L${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
+   Mesma unidade --u do resto do site (100cqw / 1920), então tudo aqui
+   escala junto com a página — não precisa de media query separada.
+   ========================================================================== */
+.preloader {
+  --u: calc(100cqw / 1920);
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  overflow: hidden;
+  background-color: #000;
 }
 
-if (preloader && isPortraitMobile()) aimWebAtHand();
-
-    /* Entrada: a mão aparece antes da teia; linha e ponta ficam escondidas. */
-if (preloader && !reduceMotion) {
-
-  // Título já aparece desde o início
-  gsap.set(preloaderTitle, {
-    opacity: 1,
-    scale: 1
-  });
-
-  // Teia começa escondida
-  gsap.set(preloaderWebLine, {
-    drawSVG: "0%"
-  });
-
-  gsap.set(preloaderWebTip, {
-    opacity: 0
-  });
+.preloader--hidden {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.7s ease;
 }
 
-let handStarted = false;
-let webStarted = false;
-let finishScheduled = false;
-const displayed = { pct: 0 };
+.preloader__art {
+  position: absolute;
+  inset: 0;
+}
 
-function bumpProgress() {
+/* ---------- Título (canto superior esquerdo) ---------- */
+.preloader__title {
+  position: absolute;
+  left: calc(40 * var(--u));
+  top: calc(64 * var(--u));
+  width: calc(320 * var(--u));
+  height: auto;
+  opacity: 0;
+  transform: scale(0.85);
+}
 
-  loadedItems = Math.min(
-    loadedItems + 1,
-    LOADED_TOTAL
-  );
-
-  const done = loadedItems === LOADED_TOTAL;
-
-  const target = Math.min(
-    (loadedItems / LOADED_TOTAL) * 100,
-    99
-  );
-
-  gsap.to(displayed, {
-    pct: target,
-    duration: 2.0,
-    ease: done ? "power2.out" : "power1.out",
-
-    onUpdate: () => {
-
-      const pct = Math.round(displayed.pct);
-
-      if (preloaderCount) {
-        preloaderCount.textContent = `${pct}%`;
-      }
-
-      updatePreloaderAnimation(displayed.pct);
-    },
-    onComplete: () => {
-      if (done && !finishScheduled) {
-        finishScheduled = true;
-
-        gsap.delayedCall(1.2, () => {
-          gsap.to(displayed, {
-            pct: 100,
-            duration: 0.35,
-            ease: "power2.out",
-            onUpdate: () => {
-              if (preloaderCount) {
-                preloaderCount.textContent = `${Math.round(displayed.pct)}%`;
-              }
-            },
-            onComplete: revealSite
-          });
-        });
-      }
-    }
-  });
+/* ---------- Mão (canto superior direito, girada) ---------- */
+.preloader__hand {
+  position: absolute;
+  right: calc(-615* var(--u));
+  top: calc(-10* var(--u));
+  width: calc(600 * var(--u));
+  height: auto;
+  opacity: 1;
+  transform: rotate(60deg) scale(0.95);
+  transform-origin: center;
+  z-index: 90;
 }
 
 
+.preloader__web {
+  position: absolute;
+  left: calc(-90 * var(--u));
+  bottom: calc (70 * var(--u));
+  width: calc(1920* var(--u));
+  height: 1080px;
+ 
+  z-index: 0 ;
+}
 
-function updatePreloaderAnimation(pct) {
+.preloader__web-tip {
+  opacity: 0;
+  transform-origin: 200px 1920px; /* aproximado ao centro da pontinha enrolada, em coordenadas do viewBox */
+  transform: scale(1);
+}
 
-  // 90% → mão entra
-  if (pct >= 90 && !handStarted) {
-    handStarted = true;
 
-    /* no desktop a mão anda 300px; em pé ela anda proporcional ao tamanho
-       dela, até a ponta do fio da teia */
-    gsap.to(preloaderHand, {
-      x: isPortraitMobile() ? handShiftMobile() : -300,
-      y: 0,
-      duration: 0.7,
-      ease: "power2.out"
-    });
+.preloader__web-line {
+  z-index: 80;
+}
+
+/* ---------- Contador (canto inferior direito) ---------- */
+.preloader__count {
+  position: absolute;
+  right: calc(32 * var(--u));
+  bottom: calc(32 * var(--u));
+  font-family: "Good Times", "Poppins", system-ui, sans-serif;
+  font-size: calc(28 * var(--u));
+  color: #fff;
+  letter-spacing: 0.08em;
+}
+
+/* ---------- Sem animação para quem pediu menos movimento ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .preloader__title,
+  .preloader__hand,
+  .preloader__web-tip {
+    opacity: 1;
+    transform: none;
   }
-
-  // 95% → linha e ponta da teia entram juntas
-  if (pct >= 95 && !webStarted) {
-
-    webStarted = true;
-
-    const tl = gsap.timeline();
-
-    tl.to(preloaderWebLine, {
-      drawSVG: "100%",
-      duration: 0.6,
-      ease: "power2.out"
-    }, 0)
-
-    .to(preloaderWebTip, {
-      opacity: 1,
-      duration: 0.6,
-      ease: "power2.out"
-    }, 0);
+  .preloader__web-line {
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
   }
 }
 
-function revealSite() {
-  if (!preloader) return;
+/* ---------- Reset ---------- */
+*,
+*::before,
+*::after { box-sizing: border-box; }
 
-  if (reduceMotion) {
-    smoother.paused(false);
-    preloader.classList.add("preloader--hidden");
-    preloader.addEventListener("transitionend", () => preloader.remove(), { once: true });
-    return;
-  }
+html, body { margin: 0; padding: 0; }
 
-    /* A mão e a teia saem juntas porque ambas acompanham o deslocamento
-      único da cortina do preloader. */
-  gsap.timeline({
-    onComplete: () => {
-      smoother.paused(false);
-      preloader.remove();
-    }
-  })
-    .to([preloaderTitle, preloaderHand, preloaderCount], { opacity: 1, duration: 1 })
-    .to(preloader,     { xPercent: 160, yPercent: 0, duration: 0.9, ease: "power2.in" }, "<0.09");
+img { display: block; max-width: 100%; }
+
+a { color: inherit; text-decoration: none; }
+
+p, h1, h2, h3, figure { margin: 0; }
+
+ul { margin: 0; padding: 0; list-style: none; }
+
+html { background-color: #000; }
+
+body {
+  container-type: inline-size;      /* referência para as unidades cqw */
+  background-color: black;
+  font-family: "Poppins", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
-
-
-
-/* Objeto tweenado pelo GSAP. Guarda um valor fracionário (ex.: 12.4) para que
-   dê pra fazer o crossfade entre dois frames vizinhos — é isso que deixa a
-   reprodução suave mesmo com só 59 imagens. */
-const playhead = { frame: 0 };
-
-const frames = [];
-for (let i = 1; i <= FRAME_COUNT; i++) {
-  const img = new Image();
-  img.src = `assets/frames/ezgif-frame-${String(i).padStart(3, "0")}.jpg`;
-  /* redesenha assim que cada imagem chega, para o canvas nunca ficar vazio */
-  img.addEventListener("load", () => { render(); bumpProgress(); }, { once: true });
-  /* uma imagem quebrada não pode travar o preloader para sempre */
-  img.addEventListener("error", bumpProgress, { once: true });
-  frames.push(img);
-}
-
-/* Desenha a imagem cobrindo o canvas (equivalente a background-size: cover) */
-function drawCover(img, alpha) {
-  if (!img || !img.naturalWidth) return;
-
-  const cw = canvas.width;
-  const ch = canvas.height;
-  const scale = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
-  const w = img.naturalWidth * scale;
-  const h = img.naturalHeight * scale;
-
-  ctx.globalAlpha = alpha;
-  ctx.drawImage(img, (cw - w) * FOCUS_X, (ch - h) * FOCUS_Y, w, h);
-  ctx.globalAlpha = 1;
-}
-
-function render() {
-  if (!canvas.width || !canvas.height) return;
-
-  const i    = Math.min(Math.floor(playhead.frame), LAST_FRAME);
-  const frac = playhead.frame - i;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  drawCover(frames[i], 1);
-
-  /* mistura o frame seguinte por cima, na proporção da fração */
-  if (frac > 0.001 && i < LAST_FRAME) drawCover(frames[i + 1], frac);
-}
-
-/* O canvas é dimensionado em CSS (100% do .stage); aqui ajustamos o buffer
-   interno para a densidade de pixels da tela. */
-function resizeCanvas() {
-  // Use clientWidth/Height (tamanho CSS sem transforms aplicados pelos
-  // ancestrais) para evitar redimensionar o buffer por escalonamentos de
-  // transform (ex.: ScrollSmoother). Depois multiplica pelo DPR para o
-  // buffer interno do canvas.
-  const dpr  = Math.min(window.devicePixelRatio || 1, 2);
-  const cssW = Math.max(1, Math.round(canvas.clientWidth));
-  const cssH = Math.max(1, Math.round(canvas.clientHeight));
-
-  canvas.width  = cssW * dpr;
-  canvas.height = cssH * dpr;
-  canvas.style.width  = cssW + 'px';
-  canvas.style.height = cssH + 'px';
-
-  // Reaplica configurações que são resetadas ao alterar width/height
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-
-  render();
+/* 1 unidade de design, compartilhada pelas seções */
+.hero,
+.cast {
+  --u: calc(100cqw / 1920);
 }
 
 
 /* ==========================================================================
-   3 — TIMELINE MESTRE: frames + troca de textos
+   SCROLLSMOOTHER
+   O plugin cria estes estilos em JS, mas declará-los aqui evita o salto
+   visual entre o primeiro paint e a inicialização do GSAP.
    ========================================================================== */
+ #smooth-wrapper {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
 
-/* Durações em "unidades de timeline". O valor absoluto não importa (o scrub
-   normaliza tudo), elas só servem para posicionar uma coisa em relação à
-   outra. A Hero fica pinnada durante as duas fases.
+#smooth-content {
+  width: 100%;
+  overflow: visible;
+  will-change: transform;
+} 
 
-     ATO 1 → sequência de frames + troca das três sinopses
-     ATO 2 → máscara preta abre do centro e revela o trailer,
-             empurrando o logo e a sinopse para os lados
 
-   SCROLL_PER_UNIT converte tudo em distância de rolagem: 15 unidades a 40%
-   da altura da tela = 600% (seis telas de rolagem com a Hero travada). */
-const ACT_1 = 10;
-const ACT_2 = 5;
-const TL_DURATION = ACT_1 + ACT_2;
-const SCROLL_PER_UNIT = 40;
+/* ==========================================================================
+   SEÇÃO 1 — HERO
+   ========================================================================== */
+.hero {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background-color: #770000;
+}
 
-/* Quanto tempo cada letra leva para sumir/aparecer... */
-const CHAR_FADE = 0.5;
-/* ...e em quanto tempo o sorteio das letras se espalha (stagger total). */
-const CHAR_SPREAD = 1.5;
+/* Teia: imagem em tons de cinza em overlay 30% sobre o vermelho */
+.hero__webbing {
+  position: absolute;
+  inset: 0;
+  background: url("assets/bg.webp") center bottom / cover no-repeat;
+  opacity: .3;
+  mix-blend-mode: overlay;
+  pointer-events: none;
+}
 
-/* Duração de um bloco completo de fade (última letra termina aqui) */
-const FADE_BLOCK = CHAR_FADE + CHAR_SPREAD;
-/* O texto que entra começa antes de o anterior sumir por completo */
-const OVERLAP = FADE_BLOCK * 0.6;
-
-const textEls = gsap.utils.toArray(".movie__desc");
-const textBox = document.querySelector(".movie__texts");
-const title   = document.querySelector(".movie__title");
-const badge   = document.querySelector(".scroll-badge");
-const ring    = document.querySelector(".scroll-badge__ring");
-const stage   = document.querySelector(".stage");
-const reveal  = document.querySelector(".reveal");
-
-let splits = [];
-let master = null;
-
+/* SVG que só carrega o <clipPath>: não ocupa espaço na página */
+.clip-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
 
 /* --------------------------------------------------------------------------
-   O EMPURRÃO
-   A máscara cresce a partir do centro, então sua borda esquerda está sempre
-   em (centro - largura/2). Enquanto essa borda não alcança o logo, nada se
-   move; a partir do encontro, o logo anda colado nela. Mesma coisa do outro
-   lado com a sinopse. É isso que dá a sensação de estar sendo empurrado.
+   STAGE — div recortada pelo shape de bordas arredondadas internas.
+   Ocupa 100% da largura e 100% da altura disponíveis (menos a margem de 32u).
+   Como o clipPath está em objectBoundingBox, o recorte acompanha os dois eixos.
+
+   O plano de fundo agora é a sequência de frames desenhada no .stage__canvas
+   (ver main.js). A cor de fundo é a mesma do primeiro frame, para o caso de
+   o canvas ainda não ter pintado nada.
    -------------------------------------------------------------------------- */
-const rv = { w: 0, h: 0 };
+.stage {
+  position: absolute;
+  inset: calc(32 * var(--u));
 
-const setTitleX = gsap.quickSetter(title, "x", "px");
-const setTextsX = gsap.quickSetter(textBox, "x", "px");
+  background-color: #f2f2f2;
 
-let titleGap = 0;   // do centro do .stage até a borda DIREITA do logo
-let textsGap = 0;   // do centro do .stage até a borda ESQUERDA da sinopse
-let pushPad  = 0;   // folga entre a borda da máscara e o conteúdo
+  clip-path: url(#stage-clip);
+}
+
+/* Recebe os frames; fica atrás do título, da sinopse e do selo */
+.stage__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
 
 /* --------------------------------------------------------------------------
-   SHAPE DO PALCO NA TELA EM PÉ
-   O caminho original foi desenhado para 1856 x 1016. Numa tela em pé ele
-   esticaria e os recortes ficariam enormes, então aqui ele é redesenhado com
-   a mesma lógica (cantos arredondados + três recortes em "S"), mas com cada
-   recorte do tamanho do que mora dentro dele: logo, menu e lançamento.
-   No desktop o caminho original volta intacto.
+   REVEAL — máscara preta que revela o trailer.
+   Nasce no centro do .stage com 0x0 e cresce (via GSAP) até 100% x 100%.
+
+   O truque da máscara: o .reveal__frame por dentro tem o tamanho FINAL desde
+   o primeiro quadro e é centralizado por conta própria. Como ele não depende
+   do tamanho do pai, o vídeo fica parado enquanto a máscara abre — em vez de
+   esticar junto.
    -------------------------------------------------------------------------- */
-const clipPathEl = document.querySelector("#stage-clip path");
-const CLIP_DESKTOP = clipPathEl ? clipPathEl.getAttribute("d") : "";
-
-function stageClipPath(w, h, o) {
-  const K = 0.5523;   // cúbica que aproxima um quarto de círculo
-  const n = (x, y) => (x / w).toFixed(5) + " " + (y / h).toFixed(5);
-  const out = [];
-  let cx = 0, cy = 0;
-  const M = (x, y) => { out.push("M" + n(x, y)); cx = x; cy = y; };
-  const L = (x, y) => { out.push("L" + n(x, y)); cx = x; cy = y; };
-  /* quarto de círculo até (x, y): u = direção na saída, v = direção na chegada */
-  const Q = (x, y, ux, uy, vx, vy, t) => {
-    out.push("C" + n(cx + K * t * ux, cy + K * t * uy) + " " + n(x - K * t * vx, y - K * t * vy) + " " + n(x, y));
-    cx = x; cy = y;
-  };
-  const { xTL, b, xTR, d, xBL, f, R } = o;
-
-  M(xTL + b / 2, 0);
-  L(xTR - d / 2, 0);
-  Q(xTR, d / 2, 1, 0, 0, 1, d / 2);            // recorte do menu
-  Q(xTR + d / 2, d, 0, 1, 1, 0, d / 2);
-  L(w - R, d);
-  Q(w, d + R, 1, 0, 0, 1, R);
-  L(w, h - R);
-  Q(w - R, h, 0, 1, -1, 0, R);
-  L(xBL + f / 2, h);
-  Q(xBL, h - f / 2, -1, 0, 0, -1, f / 2);      // recorte do lançamento
-  Q(xBL - f / 2, h - f, 0, -1, -1, 0, f / 2);
-  L(R, h - f);
-  Q(0, h - f - R, -1, 0, 0, -1, R);
-  L(0, b + R);
-  Q(R, b, 0, -1, 1, 0, R);
-  L(xTL - b / 2, b);
-  Q(xTL, b / 2, 1, 0, 0, -1, b / 2);           // recorte do logo
-  Q(xTL + b / 2, 0, 0, -1, 1, 0, b / 2);
-  out.push("Z");
-  return out.join(" ");
+.reveal {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  background-color: #000;
+  z-index: 99;
 }
 
-function applyStageClip() {
-  if (!clipPathEl) return;
-  if (!isPortraitMobile()) { clipPathEl.setAttribute("d", CLIP_DESKTOP); return; }
+.reveal__frame {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
 
-  const st = stage.getBoundingClientRect();
-  const br = document.querySelector(".brand").getBoundingClientRect();
-  const nv = document.querySelector(".nav").getBoundingClientRect();
-  const rl = document.querySelector(".release").getBoundingClientRect();
-  const w = st.width, h = st.height;
-
-  const b = br.bottom - st.top + 8;            // altura de cada recorte
-  const d = nv.bottom - st.top + 8;
-  const f = st.bottom - rl.top + 8;
-  let xTL = br.right - st.left + 6 + b / 2;    // centro do "S" de cada recorte
-  let xTR = nv.left - st.left - 6 - d / 2;
-  const xBL = rl.right - st.left + 10 + f / 2;
-
-  /* tela muito estreita: os dois recortes de cima se encontram no meio */
-  if (xTL + b / 2 > xTR - d / 2) {
-    const mid = (xTL + b / 2 + xTR - d / 2) / 2;
-    xTL = mid - b / 2;
-    xTR = mid + d / 2;
-  }
-
-  clipPathEl.setAttribute("d", stageClipPath(w, h, { xTL, b, xTR, d, xBL, f, R: 22 }));
+  width: 100vw;                 /* largura total da página */
+  height: var(--frame-h, 60vh); /* altura do .stage, medida em JS */
 }
 
-/* Medido com x = 0, senão as medidas saem contaminadas pelo próprio empurrão */
-function measurePush() {
-  const box = stage.getBoundingClientRect();
-  const centerX = box.left + box.width / 2;
-
-  if (isPortraitMobile()) {
-    /* Em pé, logo e sinopse ficam empilhados e centralizados: a máscara nasce
-       por dentro deles, então o empurrão só começa quando a borda dela chega
-       na borda de fora de cada um. */
-    titleGap = centerX - title.getBoundingClientRect().left;
-    textsGap = textBox.getBoundingClientRect().right - centerX;
-  } else {
-    titleGap = centerX - title.getBoundingClientRect().right;
-    textsGap = textBox.getBoundingClientRect().left - centerX;
-  }
-  pushPad  = box.width * (40 / 1856);   // 40u de respiro
-
-  /* O frame do trailer precisa nascer já com a altura final do .stage — é o
-     que faz o vídeo ficar parado enquanto a máscara abre. Medir aqui é mais
-     confiável do que calcular em dvh, que varia de navegador para navegador
-     (e no mobile muda quando a barra de endereço aparece). */
-  reveal.style.setProperty("--frame-h", window.innerHeight + "px");
+.reveal__video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
-function applyReveal() {
-  reveal.style.width  = rv.w + "px";
-  reveal.style.height = rv.h + "px";
-
-  const half = rv.w / 2 + pushPad;
-  setTitleX(-Math.max(0, half - titleGap));
-  setTextsX( Math.max(0, half - textsGap));
+/* Leve escurecida enquanto o trailer roda mudo, no modo "prévia" */
+.reveal__overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, .38);
+  pointer-events: none;
 }
+
+/* Em tela cheia o frame passa a valer a tela inteira */
+.reveal__frame:fullscreen { width: 100%; height: 100%; }
 
 
 /* --------------------------------------------------------------------------
    PLAYER
-   Dois modos: "prévia" (mudo, em loop, com overlay — o que roda enquanto a
-   máscara abre) e "assistindo" (do começo, com som e com os controles).
    -------------------------------------------------------------------------- */
-const player = (() => {
-  const root    = document.querySelector(".player");
-  const frame   = document.querySelector(".reveal__frame");
-  const video   = document.querySelector(".reveal__video");
-  const overlay = document.querySelector(".reveal__overlay");
+.player {
+  position: absolute;
+  inset: 0;
+  
+}
 
-  const bigBtn  = root.querySelector(".player__big");
-  const toggle  = root.querySelector(".player__toggle");
-  const seek    = root.querySelector(".player__seek");
-  const fill    = root.querySelector(".player__fill");
-  const nowEl   = root.querySelector(".player__now");
-  const totalEl = root.querySelector(".player__total");
-  const muteBtn = root.querySelector(".player__mute");
-  const fullBtn = root.querySelector(".player__full");
+/* ---------- Botão grande de play ---------- */
+.player__big {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(120 * var(--u));
+  height: calc(120 * var(--u));
+  margin: calc(-60 * var(--u)) 0 0 calc(-60 * var(--u));
 
-  let watching = false;
-  let seeking  = false;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, .92);
+  cursor: pointer;
 
-  const fmt = s => {
-    if (!isFinite(s) || s < 0) return "0:00";
-    return Math.floor(s / 60) + ":" + String(Math.floor(s % 60)).padStart(2, "0");
-  };
+  opacity: 0;                 /* o GSAP revela no fim da máscara */
+  transform: scale(.75);
+  pointer-events: none;       /* liberado pela classe .is-ready */
+  transition: color .2s ease;
+}
 
-  /* ---------- modos ---------- */
-  function preview() {
-    video.loop = true;
-    video.muted = true;
-    video.currentTime = 0;
-    video.play().catch(() => {});   // navegador pode recusar; mudo costuma passar
+.player__big svg { width: 100%; height: 100%; }
+
+.player__big:hover { color: #fff; }
+
+/* Só clicável quando a máscara termina de abrir */
+.player.is-ready .player__big { pointer-events: auto; }
+
+/* Depois do play o botão grande sai de cena */
+.player.is-playing .player__big { display: none; }
+
+/* ---------- Barra de controles ----------
+   Centralizada e com largura limitada de propósito: o .stage é recortado por
+   um shape com um entalhe embaixo à esquerda, e uma barra de ponta a ponta
+   teria esse pedaço cortado fora. 880u mantém tudo na faixa reta do shape. */
+.player__bar {
+  position: absolute;
+  left: 50%;
+  bottom: calc(56 * var(--u));
+  transform: translateX(-50%);
+  width: calc(880 * var(--u));
+
+  display: flex;
+  align-items: center;
+  gap: calc(20 * var(--u));
+
+  padding: calc(12 * var(--u)) calc(20 * var(--u));
+  border: 1px solid rgba(255, 255, 255, .14);
+  border-radius: calc(50 * var(--u));
+  background-color: rgba(0, 0, 0, .55);
+  backdrop-filter: blur(calc(12 * var(--u)));
+
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .3s ease;
+}
+
+/* A barra só existe depois que o trailer começa pra valer */
+.player.is-playing .player__bar {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.player__toggle,
+.player__mute,
+.player__full {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(34 * var(--u));
+  height: calc(34 * var(--u));
+
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, .8);
+  cursor: pointer;
+  transition: color .2s ease, background-color .2s ease;
+}
+
+.player__toggle:hover,
+.player__mute:hover,
+.player__full:hover {
+  color: #fff;
+  background-color: rgba(255, 255, 255, .12);
+}
+
+.player__icon { width: calc(22 * var(--u)); height: calc(22 * var(--u)); }
+
+/* Só um ícone por botão fica visível de cada vez.
+   Estado padrão = rodando, então o botão mostra "pausar". */
+.player__icon--play,
+.player__icon--muted { display: none; }
+
+.player.is-paused .player__icon--play  { display: block; }
+.player.is-paused .player__icon--pause { display: none; }
+
+.player.is-muted .player__icon--sound { display: none; }
+.player.is-muted .player__icon--muted { display: block; }
+
+/* ---------- Barra de progresso ---------- */
+.player__seek {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  height: calc(24 * var(--u));
+  cursor: pointer;
+}
+
+.player__seek:focus-visible { outline: calc(2 * var(--u)) solid rgba(255, 255, 255, .6); outline-offset: calc(2 * var(--u)); }
+
+.player__track {
+  width: 100%;
+  height: calc(4 * var(--u));
+  border-radius: calc(2 * var(--u));
+  background-color: rgba(255, 255, 255, .22);
+  overflow: hidden;
+}
+
+.player__fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background-color: rgba(255, 255, 255, .9);
+}
+
+.player__time {
+  flex-shrink: 0;
+  font-size: calc(14 * var(--u));
+  line-height: calc(21 * var(--u));
+  font-variant-numeric: tabular-nums;
+  color: rgba(255, 255, 255, .75);
+  white-space: nowrap;
+}
+
+
+/* ---------- Título + sinopse (centralizados na vertical) ---------- */
+.movie {
+  position: absolute;
+  left: calc(45 * var(--u));
+  width: calc(1766 * var(--u));
+  top: 50%;
+  margin-top: calc(-56 * var(--u));   /* 540 - 484, com o bloco de 153u */
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.movie__title {
+  width: calc(445 * var(--u));
+  height: calc(153 * var(--u));
+}
+
+/* --------------------------------------------------------------------------
+   Sinopse — três textos empilhados no mesmo ponto.
+   Só um fica visível por vez; a troca acontece letra a letra (ver main.js).
+   A altura da caixa acompanha o texto mais alto (o 3º), por isso os
+   parágrafos são posicionados de forma absoluta a partir do topo.
+   -------------------------------------------------------------------------- */
+.movie__texts {
+  position: relative;
+  width: calc(449 * var(--u));
+  height: calc(180 * var(--u));        /* 6 linhas de 30u */
+  margin-top: calc(16.5 * var(--u));
+
+  /* Animado pelo scrub: escuro sobre os frames claros, claro sobre os escuros */
+  color: rgba(0, 0, 0, .9);
+}
+
+.movie__desc {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  font-size: calc(20 * var(--u));
+  line-height: calc(30 * var(--u));
+  color: inherit;                      /* herda a cor animada de .movie__texts */
+}
+
+/* Enquanto o GSAP não roda, só o primeiro texto aparece */
+.movie__desc[data-desc="2"],
+.movie__desc[data-desc="3"] { opacity: 0; }
+
+/* ---------- Selo "role a página" (ancorado na base à direita) ---------- */
+.scroll-badge {
+  position: absolute;
+  right: calc(45 * var(--u));
+  bottom: calc(55.64 * var(--u));
+  width: calc(176 * var(--u));
+  height: calc(176 * var(--u));
+}
+
+.scroll-badge__ring {
+  width: 100%;
+  height: 100%;
+  animation: scroll-badge-spin 8s linear infinite;
+}
+
+@keyframes scroll-badge-spin {
+  from {
+    transform: rotate(0deg);
   }
-
-  function reset() {
-    if (!watching) return;
-    watching = false;
-
-    root.classList.remove("is-playing", "is-paused", "is-muted");
-    preview();
-    gsap.to(overlay, { opacity: 1, duration: .3, overwrite: true });
+  to {
+    transform: rotate(360deg);
   }
+}
 
-  function watch() {
-    watching = true;
+.scroll-badge__hand {
+  position: absolute;
+  left: calc(50 * var(--u));
+  top: calc(45.64 * var(--u));
+  width: calc(76 * var(--u));
+  height: calc(83 * var(--u));
+}
 
-    root.classList.add("is-playing");
-    root.classList.remove("is-paused", "is-muted");
+/* --------------------------------------------------------------------------
+   Elementos nos recortes (fora do shape, sobre o vermelho)
+   -------------------------------------------------------------------------- */
 
-    video.loop = false;
-    video.muted = false;
-    video.currentTime = 0;      // volta do início, como pedido
-    video.play().catch(() => {});
+/* ---------- Logo ---------- */
+.brand {
+  position: absolute;
+  left: calc(32 * var(--u));
+  top: calc(32 * var(--u));
+  width: calc(177 * var(--u));
+  height: calc(50 * var(--u));
+}
 
-    gsap.to(overlay, { opacity: 0, duration: .4, overwrite: true });
-  }
+.brand__spider {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(38 * var(--u));
+  height: calc(50 * var(--u));
+}
 
-  function setReady(open) { root.classList.toggle("is-ready", open); }
+.brand__marvel {
+  position: absolute;
+  left: calc(70 * var(--u));
+  top: calc(10 * var(--u));
+  width: calc(78 * var(--u));
+  height: calc(30 * var(--u));
+}
 
-  /* ---------- progresso ---------- */
-  function sync() {
-    const d = video.duration;
-    const p = (isFinite(d) && d > 0) ? video.currentTime / d : 0;
+/* ---------- Navegação ---------- */
+.nav {
+  position: absolute;
+  right: calc(32 * var(--u));
+  top: calc(32 * var(--u));
+  height: calc(56 * var(--u));
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(40 * var(--u));
+}
 
-    fill.style.width = (p * 100) + "%";
-    nowEl.textContent = fmt(video.currentTime);
-    seek.setAttribute("aria-valuenow", Math.round(p * 100));
-  }
+.nav__link {
+  font-size: calc(16 * var(--u));
+  line-height: calc(24 * var(--u));
+  color: rgba(255, 255, 255, .9);
+  white-space: nowrap;
+  transition: opacity .2s ease;
+}
 
-  function seekToX(clientX) {
-    if (!isFinite(video.duration)) return;
-    const r = seek.getBoundingClientRect();
-    video.currentTime = gsap.utils.clamp(0, 1, (clientX - r.left) / r.width) * video.duration;
-    sync();
-  }
+.nav__link:hover { opacity: .7; }
 
-  /* ---------- eventos ---------- */
-  bigBtn.addEventListener("click", watch);
+.nav__cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16 * var(--u)) calc(20 * var(--u));
+  border-radius: calc(50 * var(--u));
+  background-color: rgba(255, 255, 255, .9);
+  font-size: calc(16 * var(--u));
+  line-height: calc(24 * var(--u));
+  color: rgba(0, 0, 0, .9);
+  white-space: nowrap;
+  transition: background-color .2s ease;
+}
 
-  toggle.addEventListener("click", () => {
-    if (video.ended) video.currentTime = 0;
-    video.paused ? video.play() : video.pause();
-  });
+.nav__cta:hover { background-color: #fff; }
 
-  video.addEventListener("play",  () => root.classList.remove("is-paused"));
-  video.addEventListener("pause", () => { if (watching) root.classList.add("is-paused"); });
-  video.addEventListener("ended", () => root.classList.add("is-paused"));
-  video.addEventListener("timeupdate", () => { if (!seeking) sync(); });
+/* ---------- Lançamento (ancorado na base à esquerda) ---------- */
+.release {
+  position: absolute;
+  left: calc(32 * var(--u));
+  bottom: calc(32 * var(--u));
+}
 
-  function readMeta() {
-    totalEl.textContent = fmt(video.duration);
-    sync();
-  }
-  video.addEventListener("loadedmetadata", readMeta);
-  video.addEventListener("durationchange", readMeta);
-  /* Se o vídeo veio do cache, "loadedmetadata" já pode ter passado antes
-     daqui — nesse caso lemos a duração na hora. */
-  if (video.readyState >= 1) readMeta();
+.release__label {
+  font-size: calc(20 * var(--u));
+  line-height: calc(30 * var(--u));
+  color: rgba(255, 255, 255, .75);
+  white-space: nowrap;
+}
 
-  seek.addEventListener("pointerdown", e => {
-    seeking = true;
-    seek.setPointerCapture(e.pointerId);
-    seekToX(e.clientX);
-  });
-  seek.addEventListener("pointermove", e => { if (seeking) seekToX(e.clientX); });
-  seek.addEventListener("pointerup", e => {
-    seeking = false;
-    seek.releasePointerCapture(e.pointerId);
-  });
-
-  seek.addEventListener("keydown", e => {
-    const step = e.key === "ArrowLeft" ? -5 : e.key === "ArrowRight" ? 5 : 0;
-    if (!step || !isFinite(video.duration)) return;
-    e.preventDefault();
-    video.currentTime = gsap.utils.clamp(0, video.duration, video.currentTime + step);
-    sync();
-  });
-
-  muteBtn.addEventListener("click", () => {
-    video.muted = !video.muted;
-    root.classList.toggle("is-muted", video.muted);
-    muteBtn.setAttribute("aria-label", video.muted ? "Ativar som" : "Desativar som");
-  });
-
-  fullBtn.addEventListener("click", () => {
-    if (document.fullscreenElement) document.exitFullscreen();
-    else if (frame.requestFullscreen) frame.requestFullscreen().catch(() => {});
-    /* iPhone não aceita tela cheia em um <div>: só no próprio <video> */
-    else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
-  });
-
-  /* Enquanto o player está aberto, a barra de espaço deve pausar o trailer
-     em vez de rolar a página. */
-  root.addEventListener("keydown", e => {
-    if (e.key === " " && watching) { e.preventDefault(); toggle.click(); }
-  });
-
-  preview();
-
-  return { reset, setReady };
-})();
-
-
-function buildTimeline() {
-  /* --- limpa o que existir de uma execução anterior (resize) --- */
-  if (master) {
-    if (master.scrollTrigger) master.scrollTrigger.kill(true);
-    master.kill();
-    master = null;
-  }
-  splits.forEach(s => s.revert());
-
-  /* --- quebra os três parágrafos em letras --- */
-  splits = textEls.map(el => SplitText.create(el, {
-    type: "words,chars",   // quebra por palavras também: preserva o wrap do texto
-    aria: "auto"           // leitores de tela continuam lendo o texto original
-  }));
-
-  /* --- estado inicial: só o primeiro texto visível --- */
-  gsap.set(textEls, { opacity: 1 });
-  gsap.set(splits[0].chars, { opacity: 1 });
-  gsap.set([...splits[1].chars, ...splits[2].chars], { opacity: 0 });
-  gsap.set(textBox, { color: "rgba(0, 0, 0, 0.9)" });
-  gsap.set(ring, { filter: "invert(0)" });
-  gsap.set(badge, { opacity: 1 });
-
-  /* --- estado inicial do ato 2 --- */
-  applyStageClip();
-  gsap.set([title, textBox], { x: 0 });
-  measurePush();
-  rv.w = 0;
-  rv.h = 0;
-  applyReveal();
-  player.reset();
-
-  /* --- a timeline --- */
-  master = gsap.timeline({
-    scrollTrigger: {
-      trigger: ".hero",
-      start: "top top",
-      end: "+=" + (TL_DURATION * SCROLL_PER_UNIT) + "%",
-      pin: true,
-      scrub: 1,             // 1s de defasagem: acompanha a rolagem com inércia
-      invalidateOnRefresh: true,
-
-      /* o botão de play só fica clicável com a máscara aberta; sair da Hero
-         (rolando pra cima ou pra baixo) devolve o trailer ao modo prévia,
-         para não deixar o áudio tocando fora da tela */
-      onUpdate: self => {
-        const open = self.progress > 0.99;
-        player.setReady(open);
-        if (!open) player.reset();
-      },
-      onLeave: () => player.reset(),
-      onLeaveBack: () => player.reset()
-    }
-  });
-
-  /* 3.1 — Frames: do primeiro ao último, cobrindo o ato 1 inteiro */
-  master.to(playhead, {
-    frame: LAST_FRAME,
-    duration: ACT_1,
-    ease: "none",
-    onUpdate: render
-  }, 0);
-
-  /* 3.2 — Troca de textos, letra a letra e em ordem aleatória.
-     Posições calculadas para o 1º fade começar em 0 e o último terminar
-     exatamente em ACT_1 — mesmo início e mesmo fim dos frames. */
-  const fadeOut = (chars, at) => master.to(chars, {
-    opacity: 0,
-    duration: CHAR_FADE,
-    ease: "power1.out",
-    stagger: { amount: CHAR_SPREAD, from: "random" }
-  }, at);
-
-  const fadeIn = (chars, at) => master.to(chars, {
-    opacity: 1,
-    duration: CHAR_FADE,
-    ease: "power1.in",
-    stagger: { amount: CHAR_SPREAD, from: "random" }
-  }, at);
-
-  const in3Start  = ACT_1 - FADE_BLOCK;   // último bloco encosta no fim do ato 1
-  const out2Start = in3Start - OVERLAP;
-
-  fadeOut(splits[0].chars, 0);
-  fadeIn (splits[1].chars, OVERLAP);
-  fadeOut(splits[1].chars, out2Start);
-  fadeIn (splits[2].chars, in3Start);
-
-  /* 3.3 — Legibilidade.
-     A sequência começa com fundo branco e termina em preto, então a sinopse
-     preta e o selo circular preto sumiriam no fim. Os dois trechos abaixo
-     acompanham essa virada — e cada um no seu tempo, porque as duas regiões
-     do frame escurecem em momentos diferentes (medido nos próprios frames):
-
-       - atrás da sinopse: claro até ~43%, escuro a partir de ~50%
-       - atrás do selo:    claro até ~62%, escuro a partir de ~78%
-
-     As duas viradas são curtas de propósito: no meio de um crossfade a arte
-     fica cinza, que é justamente o pior contraste. Quanto mais rápida a
-     passagem, menos tempo nesse meio-termo.
-
-     O logo do filme não entra aqui: é uma arte colorida (vermelho/azul/dourado)
-     que continua legível nos dois fundos. */
-  master.to(textBox, {
-    color: "rgba(255, 255, 255, 0.92)",
-    ease: "none",
-    duration: ACT_1 * 0.07
-  }, ACT_1 * 0.44);
-
-  master.to(ring, {
-    filter: "invert(1)",
-    ease: "none",
-    duration: ACT_1 * 0.08
-  }, ACT_1 * 0.68);
-
-
-  /* ------------------------------------------------------------------------
-     ATO 2 — a máscara abre e revela o trailer
-     ------------------------------------------------------------------------ */
-
-  /* 3.4 — O selo "role a página" sai antes da máscara passar por cima dele */
-  master.to(badge, {
-    opacity: 0,
-    ease: "power1.out",
-    duration: ACT_2 * 0.22
-  }, ACT_1);
-
-  /* 3.5 — Primeiro a altura (vira uma faixa horizontal saindo do centro)... */
-  master.to(rv, {
-    h: window.innerHeight,
-    ease: "power2.out",
-    duration: ACT_2 * 0.28,
-    onUpdate: applyReveal
-  }, ACT_1);
-
-  /* ...depois a largura, que é o que empurra o logo e a sinopse.
-     Termina exatamente no fim da timeline. */
-  master.to(rv, {
-    w: window.innerWidth,
-    ease: "power2.inOut",
-    duration: ACT_2 * 0.78,
-    onUpdate: applyReveal
-  }, ACT_1 + ACT_2 * 0.22);
-
-  /* 3.6 — Com a máscara aberta, entra o botão de play */
-  master.to(".player__big", {
-    opacity: 1,
-    scale: 1,
-    ease: "back.out(2)",
-    duration: ACT_2 * 0.16
-  }, TL_DURATION - ACT_2 * 0.16);
+.release__date {
+  margin-top: calc(-4 * var(--u));
+  font-family: "Good Times", "Poppins", sans-serif;
+  font-size: calc(62 * var(--u));
+  line-height: calc(74 * var(--u));
+  color: rgba(255, 255, 255, .9);
+  white-space: nowrap;
 }
 
 
 /* ==========================================================================
-   4 — SEÇÃO ELENCO
-   A seção fica pinnada enquanto os cinco atores se revezam. Cada troca move
-   três coisas ao mesmo tempo: a foto (revelada de cima para baixo), o nome
-   na esquerda e a barra de progresso com a aranha.
+   SEÇÃO 2 — ELENCO
    ========================================================================== */
-const CAST_DURATION = 10;
-
-const castSection = document.querySelector(".cast");
-const castMedia   = document.querySelector(".cast__media");
-const castList    = document.querySelector(".cast__list");
-const castFill    = document.querySelector(".cast__fill");
-const castSpider  = document.querySelector(".cast__spider");
-
-const shots     = gsap.utils.toArray(".cast__shot");
-const slides    = gsap.utils.toArray(".cast__slide");
-const castItems = gsap.utils.toArray(".cast__item");
-
-const STOPS = shots.length;
-
-/* Posição (0..1) do centro de cada nome dentro da lista. É o que faz a aranha
-   parar exatamente na altura do nome ativo, sem número mágico nenhum. */
-let stopPositions = [];
-let castUnit = 1;          // 1u em px, para os deslocamentos do crossfade
-let castTl = null;
-
-const pick = { t: 0 };
-
-function measureCast() {
-  castUnit = castSection.clientWidth / 1920;
-
-  /* A imagem precisa nascer com a altura final: quem cresce é a máscara */
-  castMedia.style.setProperty("--media-h", castMedia.clientHeight + "px");
-
-  const listBox = castList.getBoundingClientRect();
-  stopPositions = castItems.map(li => {
-    const b = li.getBoundingClientRect();
-    return (b.top + b.height / 2 - listBox.top) / listBox.height;
-  });
+.cast {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  background-color: #000;
 }
 
-function applyPick() {
-  const p = gsap.utils.interpolate(stopPositions, pick.t) * 100;
-
-  castFill.style.height = p + "%";
-  castSpider.style.top  = p + "%";
-
-  /* o nome mais próximo é o ativo — o CSS já faz a transição de cor */
-  const active = Math.round(pick.t * (STOPS - 1));
-  castItems.forEach((li, i) => {
-    li.classList.toggle("cast__item--active", i === active);
-    if (i === active) li.setAttribute("aria-current", "true");
-    else li.removeAttribute("aria-current");
-  });
+/* ---------- Coluna de texto (centralizada na vertical) ----------
+   A altura da coluna mudou (a lista passou a ter 5 nomes), então a
+   centralização virou transform em vez do margin-top calculado à mão. */
+.cast__info {
+  position: absolute;
+  left: calc(73 * var(--u));
+  top: 50%;
+  transform: translateY(-50%);
+  width: calc(333 * var(--u));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: calc(154 * var(--u));
 }
 
-function buildCast() {
-  if (castTl) {
-    if (castTl.scrollTrigger) castTl.scrollTrigger.kill(true);
-    castTl.kill();
-    castTl = null;
-  }
-
-  measureCast();
-
-  /* --- estado inicial: primeira foto inteira, primeiro nome visível --- */
-  gsap.set(shots[0], { height: "100%" });
-  gsap.set(shots.slice(1), { height: "0%" });
-  gsap.set(slides[0], { opacity: 1, y: 0 });
-  gsap.set(slides.slice(1), { opacity: 0 });
-
-  pick.t = 0;
-  applyPick();
-
-  castTl = gsap.timeline({
-    scrollTrigger: {
-      trigger: ".cast",
-      start: "top top",
-      end: "+=" + (CAST_DURATION * SCROLL_PER_UNIT) + "%",
-      pin: true,
-      scrub: true,
-      invalidateOnRefresh: true
-    }
-  });
-
-  /* Reserva a duração total. Sem isto a timeline terminaria junto com a última
-     troca (a duração de uma timeline é a do seu conteúdo), e o respiro do fim
-     simplesmente não existiria. */
-  castTl.to({}, { duration: CAST_DURATION }, 0);
-
-  /* Um respiro no começo e no fim, e as quatro trocas distribuídas no meio */
-  const HOLD  = CAST_DURATION * 0.10;
-  const step  = (CAST_DURATION - HOLD * 2) / (STOPS - 1);
-  const TRANS = step * 0.55;            // o resto de cada trecho é pausa
-  const SHIFT = 18 * castUnit;          // deslocamento vertical do crossfade
-
-  for (let k = 1; k < STOPS; k++) {
-    const at = HOLD + (k - 1) * step;
-
-    /* 4.1 — a foto nova desce por cima da anterior */
-    castTl.fromTo(shots[k],
-      { height: "0%" },
-      { height: "100%", ease: "power2.inOut", duration: TRANS },
-      at);
-
-    /* 4.2 — o nome anterior sobe e some, o novo entra por baixo */
-    castTl.to(slides[k - 1], {
-      opacity: 0,
-      y: -SHIFT,
-      ease: "power1.in",
-      duration: TRANS * 0.45
-    }, at);
-
-    castTl.fromTo(slides[k],
-      { opacity: 0, y: SHIFT },
-      { opacity: 1, y: 0, ease: "power2.out", duration: TRANS * 0.6 },
-      at + TRANS * 0.4);
-
-    /* 4.3 — a barra preenche e a aranha desce até o próximo nome */
-    castTl.to(pick, {
-      t: k / (STOPS - 1),
-      ease: "power2.inOut",
-      duration: TRANS,
-      onUpdate: applyPick
-    }, at);
-  }
+.cast__label {
+  font-family: "Good Times", "Poppins", sans-serif;
+  font-size: calc(32 * var(--u));
+  line-height: calc(38 * var(--u));
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .9);
 }
 
+/* Os cinco pares nome + papel ocupam o mesmo espaço, empilhados.
+   A caixa tem altura fixa (93u do nome + 4u de gap + 30u do papel) porque
+   os filhos são absolutos e não empurram mais o layout. */
+.cast__person {
+  position: relative;
+  width: 100%;
+  height: calc(127 * var(--u));
+}
+
+.cast__slide {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: calc(4 * var(--u));
+}
+
+/* Antes do GSAP rodar, só o primeiro par aparece */
+.cast__slide + .cast__slide { opacity: 0; }
+
+.cast__name {
+  font-weight: 400;
+  font-size: calc(62 * var(--u));
+  line-height: calc(93 * var(--u));
+  color: rgba(255, 255, 255, .9);
+}
+
+.cast__role {
+  font-size: calc(20 * var(--u));
+  line-height: calc(30 * var(--u));
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .75);
+}
+
+/* ---------- Seletor de personagens ----------
+   "stretch" faz o indicador ter exatamente a altura da lista, qualquer que
+   seja o número de nomes — é o que permite a aranha apontar para o nome
+   certo sem nenhum número mágico. */
+.cast__picker {
+  display: flex;
+  align-items: stretch;
+  gap: calc(20 * var(--u));
+}
+
+.cast__indicator {
+  position: relative;
+  flex-shrink: 0;
+  width: calc(20 * var(--u));
+}
+
+/* Trilho apagado, de ponta a ponta */
+.cast__track,
+.cast__fill {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: calc(2 * var(--u));
+  margin-left: calc(-1 * var(--u));
+  border-radius: calc(1 * var(--u));
+}
+
+.cast__track {
+  bottom: 0;
+  background-color: rgba(255, 255, 255, .2);
+}
+
+/* Preenchimento: cresce até a posição do nome ativo */
+.cast__fill {
+  height: 0;
+  background-color: rgba(255, 255, 255, .7);
+}
+
+/* A aranha cavalga a ponta do preenchimento */
+.cast__spider {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: calc(21 * var(--u));
+  height: calc(26 * var(--u));
+  margin-left: calc(-10.5 * var(--u));
+  transform: translateY(-50%);
+}
+
+.cast__list {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: calc(20 * var(--u));
+}
+
+.cast__item {
+  font-size: calc(14 * var(--u));
+  line-height: calc(21 * var(--u));
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, .5);
+  transition: color .2s ease;
+}
+
+.cast__item--active { color: rgba(255, 255, 255, .8); }
+
+/* ---------- Imagens ---------- */
+.cast__media {
+  position: absolute;
+  left: calc(526 * var(--u));
+  right: calc(77 * var(--u));
+  top: 15.648%;      /* 169 / 1080 */
+  bottom: 11.852%;   /* (1080 - 952) / 1080 */
+  border-radius: calc(40 * var(--u));
+  overflow: hidden;
+}
+
+/* --------------------------------------------------------------------------
+   A máscara de cada foto.
+   A div cresce em altura de cima para baixo (0 → 100%) e vai revelando a
+   imagem. A imagem NÃO pode acompanhar essa altura, senão ela se espremeria
+   em vez de ser revelada — por isso ela usa --media-h, a altura final do
+   .cast__media, medida em JS.
+   -------------------------------------------------------------------------- */
+.cast__shot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+}
+
+/* A primeira já entra inteira */
+.cast__shot:first-child { height: 100%; }
+
+.cast__shot img {
+  width: 100%;
+  height: var(--media-h, 100%);
+  object-fit: cover;
+}
+
+/* Borda por dentro, como o stroke "inside" do Figma */
+.cast__media::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: calc(2 * var(--u)) solid rgba(255, 255, 255, .14);
+  border-radius: inherit;
+  pointer-events: none;
+}
 
 /* ==========================================================================
-   5 — BOOT E RESIZE
+   CELULAR E TABLET (tela em pé)
+   O layout do Figma é 1920x1080 deitado; numa tela em pé, a unidade --u
+   (largura / 1920) deixa tudo minúsculo. Aqui cada bloco ganha medidas
+   próprias, em px / vw / svh, pensadas para a tela vertical.
    ========================================================================== */
-resizeCanvas();
-buildTimeline();
-buildCast();
+@media (orientation: portrait) and (max-width: 1024px) {
 
-/* As fontes chegam depois do primeiro paint e mudam a quebra de linha:
-   refaz o split (e as medidas do elenco) para tudo cair no lugar certo. */
-if (document.fonts && document.fonts.ready) {
-  document.fonts.ready.then(() => {
-    bumpProgress();
-    buildTimeline();
-    buildCast();
-    ScrollTrigger.refresh();
-  });
-} else {
-  /* navegador sem Font Loading API: não trava o preloader esperando */
-  bumpProgress();
-}
-
-/* Só refaz o split quando a LARGURA muda: no mobile, a barra de endereço
-   entrando e saindo altera a altura o tempo todo e não deve rebuildar nada.
-   A altura da foto, essa sim, precisa ser reescrita em qualquer resize. */
-let lastWidth = window.innerWidth;
-let resizeTimer;
-
-// window.addEventListener("resize", () => {
-//   resizeCanvas();
-//   castMedia.style.setProperty("--media-h", castMedia.clientHeight + "px");
-
-//   if (window.innerWidth === lastWidth) return;
-//   lastWidth = window.innerWidth;
-
-//   clearTimeout(resizeTimer);
-//   resizeTimer = setTimeout(() => {
-//     buildTimeline();
-//     buildCast();
-//     ScrollTrigger.refresh();
-//   }, 250);
-// });
-
-/* ------------------------------------------------------------------
-   Diagnóstico: detecta se algum ancestor (ex.: #smooth-content criado
-   pelo ScrollSmoother) está aplicando escala ao conteúdo. Escalas ≠ 1
-   geralmente forçam rasterização e causam pixelização em SVGs.
-   Logs aparecem no console para ajudar a depurar.
-   ------------------------------------------------------------------ */
-function detectSmoothContentScale() {
-  try {
-    const el = document.querySelector('#smooth-content');
-    if (!el) return;
-    const t = getComputedStyle(el).transform;
-    if (!t || t === 'none') return console.log('smooth-content: transform none');
-
-    // matrix(a, b, c, d, tx, ty) -> scaleX ~= a, scaleY ~= d
-    const m = t.match(/matrix\(([-0-9., ]+)\)/);
-    if (m) {
-      const vals = m[1].split(',').map(s => parseFloat(s.trim()));
-      const scaleX = vals[0];
-      const scaleY = vals[3];
-      if (Math.abs(scaleX - 1) > 0.001 || Math.abs(scaleY - 1) > 0.001) {
-        console.warn('detectSmoothContentScale: smooth-content scaled', { scaleX, scaleY, transform: t });
-      } else {
-        console.log('detectSmoothContentScale: smooth-content scale ~= 1');
-      }
-    } else {
-      console.log('detectSmoothContentScale: transform', t);
-    }
-  } catch (e) {
-    console.error('detectSmoothContentScale error', e);
+  /* ---------- PRELOADER ----------
+     Mesma composição do desktop: título no canto de cima, mão entrando pela
+     direita, teia no canto de baixo e o fio ligando as duas (a ponta do fio
+     é apontada para a mão no main.js). */
+  .preloader__title {
+    left: 6vw;
+    top: max(7svh, 44px);
+    width: min(58vw, 420px);
   }
-}
 
-// roda no boot e em eventos que mudam layout
-detectSmoothContentScale();
-window.addEventListener('resize', detectSmoothContentScale, { passive: true });
-// também observa mutações de estilo para detectar mudanças dinâmicas
-const obs = new MutationObserver(detectSmoothContentScale);
-const sc = document.querySelector('#smooth-content');
-if (sc) obs.observe(sc, { attributes: true, attributeFilter: ['style', 'class'] });
+  .preloader__hand {
+    width: 62vw;
+    height: calc(62vw * 83 / 76);
+    right: -66vw;
+    top: calc(30svh - 62vw * 83 / 76 / 2);
+  }
+
+  /* A teia é desenhada grande o bastante para a ponta ter ~42vw de largura */
+  .preloader__web {
+    --s: calc(42vw / 470);
+    left: calc(10vw - 290 * var(--s));
+    top: calc(76svh - 1012 * var(--s));
+    bottom: auto;
+    width: calc(1804 * var(--s));
+    height: calc(1444 * var(--s));
+    overflow: visible;
+  }
+
+  .preloader__count {
+    right: 6vw;
+    bottom: max(5svh, 28px);
+    font-size: clamp(18px, 5vw, 30px);
+  }
+
+  /* ---------- HERO ----------
+     O shape com recortes continua o mesmo; o main.js redesenha o caminho
+     dele na proporção da tela em pé, com cada recorte do tamanho do que
+     fica dentro (logo, menu e data de lançamento). */
+  .stage { inset: 10px; }
+
+  .brand {
+    left: 14px;
+    top: 14px;
+    width: 82px;
+    height: 29px;
+  }
+  .brand__spider { width: 22px; height: 29px; }
+  .brand__marvel { left: 34px; top: 6px; width: 48px; height: 18px; }
+
+  .nav {
+    right: 14px;
+    top: 12px;
+    height: 34px;
+    gap: 10px;
+  }
+  .nav__link { font-size: 11px; line-height: 16px; }
+  .nav__cta {
+    padding: 8px 11px;
+    border-radius: 50px;
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  .release { left: 18px; bottom: 16px; }
+  .release__label { font-size: 10px; line-height: 14px; }
+  .release__date {
+    margin-top: 0;
+    font-size: clamp(26px, 7vw, 46px);
+    line-height: 1.1;
+  }
+
+  /* Logo no alto do palco e sinopse embaixo: o rosto dos frames fica livre no meio */
+  .movie {
+    left: 7%;
+    width: 86%;
+    top: 9%;
+    bottom: calc(clamp(84px, 22vw, 130px) + 30px);
+    margin-top: 0;
+    flex-direction: column;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .movie__title {
+    width: min(70vw, 460px);
+    height: auto;
+  }
+
+  .movie__texts {
+    width: min(100%, 520px);
+    margin-top: 0;
+    font-size: clamp(15px, 4.1vw, 21px);
+    height: calc(6 * 1.5em);   /* 6 linhas: cabe o texto mais longo */
+    text-align: center;
+  }
+  .movie__desc { font-size: 1em; line-height: 1.5em; }
+
+  .scroll-badge {
+    right: 14px;
+    bottom: 14px;
+    width: clamp(84px, 22vw, 130px);
+    height: clamp(84px, 22vw, 130px);
+  }
+  .scroll-badge__hand {
+    left: 28.4%;
+    top: 25.9%;
+    width: 43.2%;
+    height: 47.2%;
+  }
+
+  /* O arquivo do trailer já vem com tarja preta gravada (91px em cima e 91px
+     embaixo, de 720). Em tela em pé essas tarjas viravam um vazio preto
+     enorme; a escala corta as duas e o vídeo ocupa a tela de ponta a ponta. */
+  .reveal__video { transform: scale(1.345); }
+
+  .player__big {
+    width: 76px;
+    height: 76px;
+    margin: -38px 0 0 -38px;
+  }
+
+  .player__bar {
+    width: calc(100vw - 32px);
+    bottom: max(28px, env(safe-area-inset-bottom, 0px));
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 50px;
+    backdrop-filter: blur(12px);
+  }
+  .player__toggle,
+  .player__mute,
+  .player__full { width: 38px; height: 38px; }
+  .player__icon { width: 22px; height: 22px; }
+  .player__seek { height: 32px; }
+  .player__track { height: 4px; border-radius: 2px; }
+  .player__time { font-size: 12px; line-height: 18px; }
+
+  /* ---------- ELENCO ----------
+     Nome no topo, foto no meio, lista com a aranha embaixo. */
+  .cast__info {
+    inset: 0;
+    width: auto;
+    transform: none;
+    display: block;
+    pointer-events: none;
+  }
+
+  .cast__label {
+    position: absolute;
+    left: 6vw;
+    top: max(5svh, 24px);
+    font-size: clamp(16px, 4.2vw, 28px);
+    line-height: 1.2;
+  }
+
+  .cast__person {
+    position: absolute;
+    left: 6vw;
+    right: 6vw;
+    top: calc(max(5svh, 24px) + clamp(30px, 7vw, 48px));
+    width: auto;
+    height: clamp(68px, 15vw, 120px);
+  }
+  .cast__slide { gap: 2px; }
+  .cast__name {
+    font-size: clamp(28px, 8vw, 60px);
+    line-height: 1.2;
+  }
+  .cast__role {
+    font-size: clamp(12px, 3.2vw, 18px);
+    line-height: 1.4;
+  }
+
+  .cast__picker {
+    position: absolute;
+    left: 6vw;
+    bottom: max(5svh, 24px);
+    gap: 14px;
+  }
+  .cast__indicator { width: 20px; }
+  .cast__track,
+  .cast__fill { width: 2px; margin-left: -1px; border-radius: 1px; }
+  .cast__spider {
+    width: 17px;
+    height: 21px;
+    margin-left: -8.5px;
+  }
+  .cast__list { gap: 8px; }
+  .cast__item {
+    font-size: clamp(12px, 3.1vw, 16px);
+    line-height: 1.5;
+  }
+
+  .cast__media {
+    left: 4vw;
+    right: 4vw;
+    top: calc(max(5svh, 24px) + clamp(30px, 7vw, 48px) + clamp(68px, 15vw, 120px) + 18px);
+    bottom: calc(max(5svh, 24px) + 6 * clamp(12px, 3.1vw, 16px) * 1.5 + 5 * 8px + 22px);
+    border-radius: 22px;
+  }
+  .cast__media::after { border-width: 1px; }
+}
