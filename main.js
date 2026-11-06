@@ -395,6 +395,17 @@ const reveal  = document.querySelector(".reveal");
 let splits = [];
 let master = null;
 
+/* Degradês de leitura (só em pé): ficam entre o canvas e o texto */
+const scrimTop = document.createElement("div");
+const scrimBottom = document.createElement("div");
+[[scrimTop, "top"], [scrimBottom, "bottom"]].forEach(([el, pos]) => {
+  el.className = "scrim scrim--" + pos;
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML = '<div class="scrim__dark"></div>';
+  stage.insertBefore(el, document.querySelector(".movie"));
+});
+const scrimDark = gsap.utils.toArray(".scrim__dark");
+
 
 /* --------------------------------------------------------------------------
    O EMPURRÃO
@@ -723,6 +734,8 @@ function buildTimeline() {
   gsap.set(ring, { filter: "invert(0)" });
   gsap.set(badge, { opacity: 1 });
   gsap.set(title, { opacity: 1 });
+  gsap.set([scrimTop, scrimBottom], { opacity: 1 });
+  gsap.set(scrimDark, { opacity: 0 });
 
   /* --- estado inicial do ato 2 --- */
   applyStageClip();
@@ -768,6 +781,7 @@ function buildTimeline() {
      sobre o frame, e o espaço do alto é liberado. */
   if (isPortraitMobile()) {
     master.to(title, { opacity: 0, ease: "power1.out", duration: ACT_1 * 0.06 }, 0);
+    master.to(scrimTop, { opacity: 0, ease: "power1.out", duration: ACT_1 * 0.06 }, 0);
   }
 
   /* 3.2 — Troca de textos, letra a letra e em ordem aleatória.
@@ -810,6 +824,9 @@ function buildTimeline() {
 
      O logo do filme não entra aqui: é uma arte colorida (vermelho/azul/dourado)
      que continua legível nos dois fundos. */
+  /* os degradês viram escuros na mesma hora em que o texto vira branco */
+  master.to(scrimDark, { opacity: 1, ease: "none", duration: ACT_1 * 0.07 }, ACT_1 * 0.44);
+
   master.to(textBox, {
     color: "rgba(255, 255, 255, 0.92)",
     ease: "none",
