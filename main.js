@@ -75,30 +75,69 @@ const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").match
 const isPortraitMobile = () =>
   window.matchMedia("(orientation: portrait) and (max-width: 1024px)").matches;
 
-/* Em pé, a mão anda pouco mais da metade da largura dela (no desktop são 300px
-   de 600u, também a metade) e o fio da teia é apontado para a palma. */
-const handShiftMobile = () => -preloaderHand.offsetWidth * 0.55;
+/* --------------------------------------------------------------------------
+   PRELOADER EM PÉ
+   No desktop a mão fica à direita, girada 60°, e o fio sai da teia (canto de
+   baixo) e termina no meio dos dedos dela, "entre" o indicador e o mindinho.
+   Numa tela em pé a teia sobe para a diagonal: a teia fica embaixo à
+   esquerda, a mão em cima à direita, e a mão é girada para que a abertura
+   entre os dedos aponte para a teia, exatamente como no desktop (onde o fio
+   chega a 159° da mão girada em 60°). Tudo é calculado a partir do tamanho
+   da tela; o fio termina no ponto da mão onde ele termina no desktop.
+   -------------------------------------------------------------------------- */
+let preloaderShift = 0;   // quanto a mão anda (em px) para entrar na tela
 
-function aimWebAtHand() {
-  const svg = document.querySelector(".preloader__web");
-  const m = svg && svg.getScreenCTM();
+function layoutPreloaderPortrait() {
+  const web = document.querySelector(".preloader__web");
+  if (!preloader || !web) return;
+
+  const W = preloader.clientWidth, H = preloader.clientHeight;
+  const hw = Math.min(W * 0.5, 340), hh = hw * 83 / 76, k = 0.95;
+  const L = { x: 0.61, y: 0.68 };            // ponto dos dedos, em fração da mão
+  const K = { x: W * 0.70, y: H * 0.34 };    // onde o fio termina (tela)
+  const S = { x: W * 0.17, y: H * 0.80 };    // centro da teia (tela)
+
+  /* direção do nó dos dedos até a teia, e giro da mão que mantém o fio na
+     mesma posição em relação aos dedos que no desktop (159° com giro de 60°) */
+  const ang = Math.atan2(S.y - K.y, S.x - K.x) * 180 / Math.PI;
+  const rot = 60 + (ang - 159);
+  const r = rot * Math.PI / 180;
+
+  const ox = (L.x - 0.5) * hw, oy = (L.y - 0.5) * hh;
+  const C = {
+    x: K.x - k * (ox * Math.cos(r) - oy * Math.sin(r)),
+    y: K.y - k * (ox * Math.sin(r) + oy * Math.cos(r))
+  };
+  preloaderShift = W - C.x + hw * 0.85;       // começa inteira fora da tela
+
+  Object.assign(preloaderHand.style, {
+    right: "auto",
+    width: hw + "px",
+    height: hh + "px",
+    left: (C.x - hw / 2 + preloaderShift) + "px",
+    top: (C.y - hh / 2) + "px"
+  });
+  gsap.set(preloaderHand, { rotation: rot, scale: k, transformOrigin: "50% 50%", x: 0, y: 0 });
+
+  /* teia: a parte desenhada tem ~470 unidades do viewBox de largura */
+  const ww = Math.min(W * 0.58, 300), s = ww / 470;
+  Object.assign(web.style, {
+    left: (S.x - 290.001 * s) + "px",
+    top: (S.y - 1012.34 * s) + "px",
+    bottom: "auto",
+    width: (1804 * s) + "px",
+    height: (1444 * s) + "px",
+    overflow: "visible"
+  });
+
+  /* fio: do centro da teia até o ponto dos dedos */
+  const m = web.getScreenCTM();
   if (!m) return;
-
-  const w = preloaderHand.offsetWidth;
-  const h = w * 83 / 76;                       // proporção do mao-homem-aranha.svg
-  const cx = preloaderHand.offsetLeft + w / 2 + handShiftMobile();
-  const cy = preloaderHand.offsetTop + h / 2;
-
-  /* ponto da palma no desenho, girado 60° e reduzido a 95% como no CSS */
-  const a = 60 * Math.PI / 180, k = 0.95, dx = -0.05 * w, dy = 0.25 * h;
-  const px = cx + k * (dx * Math.cos(a) - dy * Math.sin(a));
-  const py = cy + k * (dx * Math.sin(a) + dy * Math.cos(a));
-
-  const p = new DOMPoint(px, py).matrixTransform(m.inverse());
+  const p = new DOMPoint(K.x, K.y).matrixTransform(m.inverse());
   preloaderWebLine.setAttribute("d", `M290.001 1012.34L${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
 }
 
-if (preloader && isPortraitMobile()) aimWebAtHand();
+if (preloader && isPortraitMobile()) layoutPreloaderPortrait();
 
     /* Entrada: a mão aparece antes da teia; linha e ponta ficam escondidas. */
 if (preloader && !reduceMotion) {
@@ -186,7 +225,7 @@ function updatePreloaderAnimation(pct) {
     /* no desktop a mão anda 300px; em pé ela anda proporcional ao tamanho
        dela, até a ponta do fio da teia */
     gsap.to(preloaderHand, {
-      x: isPortraitMobile() ? handShiftMobile() : -300,
+      x: isPortraitMobile() ? -preloaderShift : -300,
       y: 0,
       duration: 0.7,
       ease: "power2.out"
