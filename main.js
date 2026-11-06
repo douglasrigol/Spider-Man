@@ -255,9 +255,75 @@ for (let i = 1; i <= FRAME_COUNT; i++) {
   frames.push(img);
 }
 
+/* --------------------------------------------------------------------------
+   FAIXA DO FRAME NA TELA EM PÉ
+   O frame é 16:9; cobrindo uma tela em pé ele vira só um recorte do rosto e o
+   título e a sinopse ficariam por cima dele. Em pé, o frame inteiro é
+   desenhado na largura do palco, numa faixa entre o título e a sinopse, e o
+   resto do palco é preenchido com a cor dos cantos do próprio frame (branco
+   no começo, preto no fim). No desktop nada disso é usado.
+   -------------------------------------------------------------------------- */
+let band = null;    // { top, h } em px de CSS, relativo ao .stage (null = desktop)
+
+const cornerCache = new WeakMap();
+const probe = document.createElement("canvas");
+probe.width = 2;
+probe.height = 2;
+const pctx = probe.getContext("2d", { willReadFrequently: true });
+
+function cornerColors(img) {
+  let c = cornerCache.get(img);
+  if (c) return c;
+  c = { top: "#f2f2f2", bottom: "#f2f2f2" };
+  try {
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    const bw = iw * 0.06, bh = ih * 0.05;
+    pctx.clearRect(0, 0, 2, 2);
+    pctx.drawImage(img, 0, 0, bw, bh, 0, 0, 1, 1);
+    pctx.drawImage(img, iw - bw, 0, bw, bh, 1, 0, 1, 1);
+    pctx.drawImage(img, 0, ih - bh, bw, bh, 0, 1, 1, 1);
+    pctx.drawImage(img, iw - bw, ih - bh, bw, bh, 1, 1, 1, 1);
+    const d = pctx.getImageData(0, 0, 2, 2).data;
+    const avg = (a, b) => `rgb(${(d[a] + d[b]) >> 1},${(d[a + 1] + d[b + 1]) >> 1},${(d[a + 2] + d[b + 2]) >> 1})`;
+    c = { top: avg(0, 4), bottom: avg(8, 12) };
+  } catch (e) { /* canvas bloqueado: fica o cinza do palco */ }
+  cornerCache.set(img, c);
+  return c;
+}
+
+function drawBand(img, alpha) {
+  const cw = canvas.width, ch = canvas.height;
+  const k  = cw / Math.max(1, canvas.clientWidth);        // CSS px -> px do buffer
+  const bandTop = band.top * k, bandH = band.h * k;
+  const iw = img.naturalWidth, ih = img.naturalHeight;
+
+  /* faixa baixa: o frame inteiro cabe; faixa alta: preenche a altura da faixa
+     e corta um pouco das laterais (até 35%), onde só há fundo */
+  const s0 = cw / iw, sh = bandH / ih;
+  const scale = sh <= s0 ? sh : Math.min(sh, s0 * 1.35);
+  const w = iw * scale, h = ih * scale;
+  const x = (cw - w) / 2;
+  const y = bandTop + (bandH - h) / 2;
+  const c = cornerColors(img);
+
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = c.top;
+  ctx.fillRect(0, 0, cw, y);
+  ctx.fillStyle = c.bottom;
+  ctx.fillRect(0, y + h, cw, ch - (y + h));
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, c.top);
+  g.addColorStop(1, c.bottom);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, y, cw, h);
+  ctx.drawImage(img, x, y, w, h);
+  ctx.globalAlpha = 1;
+}
+
 /* Desenha a imagem cobrindo o canvas (equivalente a background-size: cover) */
 function drawCover(img, alpha) {
   if (!img || !img.naturalWidth) return;
+  if (band) return drawBand(img, alpha);
 
   const cw = canvas.width;
   const ch = canvas.height;
@@ -291,6 +357,10 @@ function resizeCanvas() {
   // transform (ex.: ScrollSmoother). Depois multiplica pelo DPR para o
   // buffer interno do canvas.
   const dpr  = Math.min(window.devicePixelRatio || 1, 2);
+  /* solta o tamanho fixo da medida anterior, senão o canvas não acompanha
+     o palco quando a janela muda (girar o celular, modo responsivo) */
+  canvas.style.width  = "";
+  canvas.style.height = "";
   const cssW = Math.max(1, Math.round(canvas.clientWidth));
   const cssH = Math.max(1, Math.round(canvas.clientHeight));
 
@@ -303,6 +373,7 @@ function resizeCanvas() {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = 'high';
 
+  measureBand();
   render();
 }
 
@@ -438,17 +509,48 @@ function applyStageClip() {
   clipPathEl.setAttribute("d", stageClipPath(w, h, { xTL, b, xTR, d, xBL, f, R: 22 }));
 }
 
+/* Em pé: acha o espaço entre o título e a sinopse, onde ficam o frame e,
+   depois, o trailer. Medido com x = 0. */
+let trailerH = 0;
+
+function measureBand() {
+  if (!isPortraitMobile()) { band = null; return; }
+
+  const st = stage.getBoundingClientRect();
+  const tb = title.getBoundingClientRect();
+  const xb = textBox.getBoundingClientRect();
+  const gap = 12;
+
+  let top = tb.bottom - st.top + gap;
+  let bottom = xb.top - st.top - gap;
+  if (!(bottom - top > 60)) {            // medida ainda não confiável
+    top = st.height * 0.28;
+    bottom = st.height * 0.62;
+  }
+  band = { top, h: bottom - top };
+  trailerH = Math.min(st.width / 2, band.h);
+
+  const cy = stage.offsetTop + top + band.h / 2;     // centro, em coordenadas da .hero
+  reveal.style.setProperty("--reveal-cy", cy + "px");
+  reveal.style.setProperty("--frame-w", stage.clientWidth + "px");
+}
+
+/* Tamanho final da máscara do trailer */
+function revealTarget() {
+  if (band) return { w: stage.clientWidth, h: trailerH };
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
 /* Medido com x = 0, senão as medidas saem contaminadas pelo próprio empurrão */
 function measurePush() {
   const box = stage.getBoundingClientRect();
   const centerX = box.left + box.width / 2;
+  measureBand();
 
-  if (isPortraitMobile()) {
-    /* Em pé, logo e sinopse ficam empilhados e centralizados: a máscara nasce
-       por dentro deles, então o empurrão só começa quando a borda dela chega
-       na borda de fora de cada um. */
-    titleGap = centerX - title.getBoundingClientRect().left;
-    textsGap = textBox.getBoundingClientRect().right - centerX;
+  if (band) {
+    /* Em pé, o trailer abre numa faixa entre o título e a sinopse: nada é
+       empurrado para os lados. */
+    titleGap = textsGap = 1e9;
   } else {
     titleGap = centerX - title.getBoundingClientRect().right;
     textsGap = textBox.getBoundingClientRect().left - centerX;
@@ -459,7 +561,12 @@ function measurePush() {
      que faz o vídeo ficar parado enquanto a máscara abre. Medir aqui é mais
      confiável do que calcular em dvh, que varia de navegador para navegador
      (e no mobile muda quando a barra de endereço aparece). */
-  reveal.style.setProperty("--frame-h", window.innerHeight + "px");
+  reveal.style.setProperty("--frame-h", (band ? trailerH : window.innerHeight) + "px");
+  if (!band) {
+    reveal.style.removeProperty("--reveal-cy");
+    reveal.style.removeProperty("--frame-w");
+  }
+  render();
 }
 
 function applyReveal() {
@@ -600,7 +707,9 @@ const player = (() => {
 
   fullBtn.addEventListener("click", () => {
     if (document.fullscreenElement) document.exitFullscreen();
-    else frame.requestFullscreen().catch(() => {});
+    else if (frame.requestFullscreen) frame.requestFullscreen().catch(() => {});
+    /* iPhone não aceita tela cheia em um <div>: só no próprio <video> */
+    else if (video.webkitEnterFullscreen) video.webkitEnterFullscreen();
   });
 
   /* Enquanto o player está aberto, a barra de espaço deve pausar o trailer
@@ -637,6 +746,7 @@ function buildTimeline() {
   gsap.set(textBox, { color: "rgba(0, 0, 0, 0.9)" });
   gsap.set(ring, { filter: "invert(0)" });
   gsap.set(badge, { opacity: 1 });
+  gsap.set(title, { opacity: 1 });
 
   /* --- estado inicial do ato 2 --- */
   applyStageClip();
@@ -677,6 +787,12 @@ function buildTimeline() {
     ease: "none",
     onUpdate: render
   }, 0);
+
+  /* Em pé, o logo do filme sai assim que a rolagem começa: ficam só os textos
+     sobre o frame, e o espaço do alto é liberado. */
+  if (isPortraitMobile()) {
+    master.to(title, { opacity: 0, ease: "power1.out", duration: ACT_1 * 0.06 }, 0);
+  }
 
   /* 3.2 — Troca de textos, letra a letra e em ordem aleatória.
      Posições calculadas para o 1º fade começar em 0 e o último terminar
@@ -743,8 +859,10 @@ function buildTimeline() {
   }, ACT_1);
 
   /* 3.5 — Primeiro a altura (vira uma faixa horizontal saindo do centro)... */
+  const target = revealTarget();
+
   master.to(rv, {
-    h: window.innerHeight,
+    h: target.h,
     ease: "power2.out",
     duration: ACT_2 * 0.28,
     onUpdate: applyReveal
@@ -753,7 +871,7 @@ function buildTimeline() {
   /* ...depois a largura, que é o que empurra o logo e a sinopse.
      Termina exatamente no fim da timeline. */
   master.to(rv, {
-    w: window.innerWidth,
+    w: target.w,
     ease: "power2.inOut",
     duration: ACT_2 * 0.78,
     onUpdate: applyReveal
@@ -905,6 +1023,12 @@ resizeCanvas();
 buildTimeline();
 buildCast();
 
+/* O logo é uma imagem: a faixa do frame depende da altura dele, que só é
+   conhecida depois que ele carrega. */
+if (title && title.tagName === "IMG" && !title.complete) {
+  title.addEventListener("load", () => { buildTimeline(); ScrollTrigger.refresh(); }, { once: true });
+}
+
 /* As fontes chegam depois do primeiro paint e mudam a quebra de linha:
    refaz o split (e as medidas do elenco) para tudo cair no lugar certo. */
 if (document.fonts && document.fonts.ready) {
@@ -925,20 +1049,21 @@ if (document.fonts && document.fonts.ready) {
 let lastWidth = window.innerWidth;
 let resizeTimer;
 
-// window.addEventListener("resize", () => {
-//   resizeCanvas();
-//   castMedia.style.setProperty("--media-h", castMedia.clientHeight + "px");
+window.addEventListener("resize", () => {
+  resizeCanvas();
+  castMedia.style.setProperty("--media-h", castMedia.clientHeight + "px");
 
-//   if (window.innerWidth === lastWidth) return;
-//   lastWidth = window.innerWidth;
+  if (window.innerWidth === lastWidth) return;
+  lastWidth = window.innerWidth;
 
-//   clearTimeout(resizeTimer);
-//   resizeTimer = setTimeout(() => {
-//     buildTimeline();
-//     buildCast();
-//     ScrollTrigger.refresh();
-//   }, 250);
-// });
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    resizeCanvas();
+    buildTimeline();
+    buildCast();
+    ScrollTrigger.refresh();
+  }, 250);
+});
 
 /* ------------------------------------------------------------------
    Diagnóstico: detecta se algum ancestor (ex.: #smooth-content criado
