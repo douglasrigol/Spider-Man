@@ -395,16 +395,6 @@ const reveal  = document.querySelector(".reveal");
 let splits = [];
 let master = null;
 
-/* Degradês de leitura (só em pé): ficam entre o canvas e o texto */
-const scrimTop = document.createElement("div");
-const scrimBottom = document.createElement("div");
-[[scrimTop, "top"], [scrimBottom, "bottom"]].forEach(([el, pos]) => {
-  el.className = "scrim scrim--" + pos;
-  el.setAttribute("aria-hidden", "true");
-  el.innerHTML = '<div class="scrim__dark"></div>';
-  stage.insertBefore(el, document.querySelector(".movie"));
-});
-const scrimDark = gsap.utils.toArray(".scrim__dark");
 
 
 /* --------------------------------------------------------------------------
@@ -474,28 +464,40 @@ function applyStageClip() {
   if (!clipPathEl) return;
   if (!isPortraitMobile()) { clipPathEl.setAttribute("d", CLIP_DESKTOP); return; }
 
-  const st = stage.getBoundingClientRect();
-  const br = document.querySelector(".brand").getBoundingClientRect();
-  const nv = document.querySelector(".nav").getBoundingClientRect();
-  const rl = document.querySelector(".release").getBoundingClientRect();
-  const w = st.width, h = st.height;
-
-  const b = br.bottom - st.top + 8;            // altura de cada recorte
-  const d = nv.bottom - st.top + 8;
-  const f = st.bottom - rl.top + 8;
-  let xTL = br.right - st.left + 6 + b / 2;    // centro do "S" de cada recorte
-  let xTR = nv.left - st.left - 6 - d / 2;
-  const xBL = rl.right - st.left + 10 + f / 2;
-
-  /* tela muito estreita: os dois recortes de cima se encontram no meio */
-  if (xTL + b / 2 > xTR - d / 2) {
-    const mid = (xTL + b / 2 + xTR - d / 2) / 2;
-    xTL = mid - b / 2;
-    xTR = mid + d / 2;
-  }
-
-  clipPathEl.setAttribute("d", stageClipPath(w, h, { xTL, b, xTR, d, xBL, f, R: 22 }));
+  /* Em pé o palco não tem os recortes (logo, menu e data ficam fora dele):
+     é o mesmo shape, só com os cantos arredondados. */
+  const w = stage.clientWidth, h = stage.clientHeight, R = 22;
+  const n = (x, y) => (x / w).toFixed(5) + " " + (y / h).toFixed(5);
+  const K = 0.5523 * R;
+  clipPathEl.setAttribute("d",
+    "M" + n(R, 0) + " L" + n(w - R, 0) +
+    " C" + n(w - R + K, 0) + " " + n(w, R - K) + " " + n(w, R) +
+    " L" + n(w, h - R) +
+    " C" + n(w, h - R + K) + " " + n(w - R + K, h) + " " + n(w - R, h) +
+    " L" + n(R, h) +
+    " C" + n(R - K, h) + " " + n(0, h - R + K) + " " + n(0, h - R) +
+    " L" + n(0, R) +
+    " C" + n(0, R - K) + " " + n(R - K, 0) + " " + n(R, 0) + " Z");
 }
+
+/* Em pé, .movie (logo + sinopse) e o selo saem do .stage para a .hero, onde o
+   recorte do shape não os alcança; no desktop voltam para o lugar de origem. */
+const movieEl = document.querySelector(".movie");
+const hero    = document.querySelector(".hero");
+const moves   = [movieEl, badge].map(el => {
+  const mark = document.createComment("");
+  el.parentNode.insertBefore(mark, el);
+  return { el, mark };
+});
+
+function placeOverlays() {
+  const portrait = isPortraitMobile();
+  moves.forEach(({ el, mark }) => {
+    if (portrait && el.parentNode !== hero) hero.insertBefore(el, reveal);
+    else if (!portrait && el.parentNode === hero) mark.parentNode.insertBefore(el, mark.nextSibling);
+  });
+}
+placeOverlays();
 
 /* Em pé o trailer abre como uma faixa horizontal com a largura inteira do
    shape, entre o título e a sinopse. Medido com x = 0. */
@@ -505,23 +507,13 @@ let trailerH = 0;
 function measureBand() {
   if (!isPortraitMobile()) { band = null; return; }
 
-  const st = stage.getBoundingClientRect();
-  const tb = title.getBoundingClientRect();
-  const xb = textBox.getBoundingClientRect();
-  const gap = 8;
+  const sh = stage.clientHeight, sw = stage.clientWidth;
+  band = { top: 0, h: sh };
+  trailerH = Math.round(Math.min(sw * 0.66, sh));
 
-  let top = tb.bottom - st.top + gap;
-  let bottom = xb.top - st.top - gap;
-  if (!(bottom - top > 60)) {            // medida ainda não confiável
-    top = st.height * 0.28;
-    bottom = st.height * 0.62;
-  }
-  band = { top, h: bottom - top };
-  trailerH = Math.round(Math.min(st.width * 0.66, band.h));
-
-  const cy = stage.offsetTop + top + band.h / 2;     // centro, em coordenadas da .hero
+  const cy = stage.offsetTop + sh / 2;               // centro do palco, em coordenadas da .hero
   reveal.style.setProperty("--reveal-cy", cy + "px");
-  reveal.style.setProperty("--frame-w", stage.clientWidth + "px");
+  reveal.style.setProperty("--frame-w", sw + "px");
 }
 
 /* Tamanho final da máscara do trailer */
@@ -730,14 +722,14 @@ function buildTimeline() {
   gsap.set(textEls, { opacity: 1 });
   gsap.set(splits[0].chars, { opacity: 1 });
   gsap.set([...splits[1].chars, ...splits[2].chars], { opacity: 0 });
-  gsap.set(textBox, { color: "rgba(0, 0, 0, 0.9)" });
-  gsap.set(ring, { filter: "invert(0)" });
+  /* em pé o texto fica sobre o vermelho: sempre branco, sem a virada */
+  gsap.set(textBox, { color: isPortraitMobile() ? "rgba(255, 255, 255, 0.95)" : "rgba(0, 0, 0, 0.9)" });
+  gsap.set(ring, { filter: isPortraitMobile() ? "invert(1)" : "invert(0)" });
   gsap.set(badge, { opacity: 1 });
   gsap.set(title, { opacity: 1 });
-  gsap.set([scrimTop, scrimBottom], { opacity: 1 });
-  gsap.set(scrimDark, { opacity: 0 });
 
   /* --- estado inicial do ato 2 --- */
+  placeOverlays();
   applyStageClip();
   gsap.set([title, textBox], { x: 0 });
   measurePush();
@@ -776,13 +768,6 @@ function buildTimeline() {
     ease: "none",
     onUpdate: render
   }, 0);
-
-  /* Em pé, o logo do filme sai assim que a rolagem começa: ficam só os textos
-     sobre o frame, e o espaço do alto é liberado. */
-  if (isPortraitMobile()) {
-    master.to(title, { opacity: 0, ease: "power1.out", duration: ACT_1 * 0.06 }, 0);
-    master.to(scrimTop, { opacity: 0, ease: "power1.out", duration: ACT_1 * 0.06 }, 0);
-  }
 
   /* 3.2 — Troca de textos, letra a letra e em ordem aleatória.
      Posições calculadas para o 1º fade começar em 0 e o último terminar
@@ -824,20 +809,19 @@ function buildTimeline() {
 
      O logo do filme não entra aqui: é uma arte colorida (vermelho/azul/dourado)
      que continua legível nos dois fundos. */
-  /* os degradês viram escuros na mesma hora em que o texto vira branco */
-  master.to(scrimDark, { opacity: 1, ease: "none", duration: ACT_1 * 0.07 }, ACT_1 * 0.44);
+  if (!isPortraitMobile()) {
+    master.to(textBox, {
+      color: "rgba(255, 255, 255, 0.92)",
+      ease: "none",
+      duration: ACT_1 * 0.07
+    }, ACT_1 * 0.44);
 
-  master.to(textBox, {
-    color: "rgba(255, 255, 255, 0.92)",
-    ease: "none",
-    duration: ACT_1 * 0.07
-  }, ACT_1 * 0.44);
-
-  master.to(ring, {
-    filter: "invert(1)",
-    ease: "none",
-    duration: ACT_1 * 0.08
-  }, ACT_1 * 0.68);
+    master.to(ring, {
+      filter: "invert(1)",
+      ease: "none",
+      duration: ACT_1 * 0.08
+    }, ACT_1 * 0.68);
+  }
 
 
   /* ------------------------------------------------------------------------
