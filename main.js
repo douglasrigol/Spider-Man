@@ -79,11 +79,10 @@ const isPortraitMobile = () =>
    PRELOADER EM PÉ
    No desktop a mão fica à direita, girada 60°, e o fio sai da teia (canto de
    baixo) e termina no meio dos dedos dela, "entre" o indicador e o mindinho.
-   Numa tela em pé a teia sobe para a diagonal: a teia fica embaixo à
-   esquerda, a mão em cima à direita, e a mão é girada para que a abertura
-   entre os dedos aponte para a teia, exatamente como no desktop (onde o fio
-   chega a 159° da mão girada em 60°). Tudo é calculado a partir do tamanho
-   da tela; o fio termina no ponto da mão onde ele termina no desktop.
+   Numa tela em pé a composição é a mesma, em horizontal, só que escalada
+   para caber inteira na largura (teia à esquerda, mão à direita, nada
+   cortado). Tudo é calculado a partir do tamanho da tela; o fio termina no
+   ponto da mão onde ele termina no desktop.
    -------------------------------------------------------------------------- */
 let preloaderShift = 0;   // quanto a mão anda (em px) para entrar na tela
 
@@ -92,23 +91,42 @@ function layoutPreloaderPortrait() {
   if (!preloader || !web) return;
 
   const W = preloader.clientWidth, H = preloader.clientHeight;
-  const hw = Math.min(W * 0.5, 340), hh = hw * 83 / 76, k = 0.95;
-  const L = { x: 0.61, y: 0.68 };            // ponto dos dedos, em fração da mão
-  const K = { x: W * 0.70, y: H * 0.34 };    // onde o fio termina (tela)
-  const S = { x: W * 0.17, y: H * 0.80 };    // centro da teia (tela)
+  const m = W * 0.035;                         // margem lateral: nada é cortado
+  const k = 0.95;
+  const L = { x: 0.61, y: 0.68 };              // ponto dos dedos, em fração da mão
 
-  /* direção do nó dos dedos até a teia, e giro da mão que mantém o fio na
-     mesma posição em relação aos dedos que no desktop (159° com giro de 60°) */
-  const ang = Math.atan2(S.y - K.y, S.x - K.x) * 180 / Math.PI;
-  const rot = 60 + (ang - 159);
+  /* Mesma composição do desktop, em horizontal: teia à esquerda, mão girada
+     60° à direita e o fio subindo 21° até os dedos. A mão e a teia são
+     medidas para caber inteiras na largura. */
+  const ww = Math.min(W * 0.38, 300);          // largura da teia desenhada
+  const S = { x: m + ww * 0.56, y: H * 0.62 }; // centro da teia (tela)
+  const rot = 60;
   const r = rot * Math.PI / 180;
+  const cr = Math.abs(Math.cos(r)), sr = Math.abs(Math.sin(r));
+  const dir = { x: Math.cos(21 * Math.PI / 180), y: -Math.sin(21 * Math.PI / 180) };
 
-  const ox = (L.x - 0.5) * hw, oy = (L.y - 0.5) * hh;
-  const C = {
-    x: K.x - k * (ox * Math.cos(r) - oy * Math.sin(r)),
-    y: K.y - k * (ox * Math.sin(r) + oy * Math.cos(r))
-  };
-  preloaderShift = W - C.x + hw * 0.85;       // começa inteira fora da tela
+  let best = null;
+  for (let f = 0.5; f >= 0.2 && !best; f -= 0.02) {
+    const hw = Math.min(W * f, 340), hh = hw * 83 / 76;
+    const ox = (L.x - 0.5) * hw, oy = (L.y - 0.5) * hh;
+    const halfW = k * (cr * hw + sr * hh) / 2;
+    for (let len = W * 0.5; len >= W * 0.22; len -= 2) {
+      const K = { x: S.x + len * dir.x, y: S.y + len * dir.y };
+      const C = {
+        x: K.x - k * (ox * Math.cos(r) - oy * Math.sin(r)),
+        y: K.y - k * (ox * Math.sin(r) + oy * Math.cos(r))
+      };
+      if (C.x + halfW <= W - m) { best = { hw, hh, K, C, halfW }; break; }
+    }
+  }
+  if (!best) {                                  // tela minúscula: usa o menor
+    const hw = W * 0.2, hh = hw * 83 / 76;
+    const K = { x: S.x + W * 0.22 * dir.x, y: S.y + W * 0.22 * dir.y };
+    best = { hw, hh, K, C: { x: K.x, y: K.y }, halfW: hw };
+  }
+  const { hw, hh, K, C, halfW } = best;
+
+  preloaderShift = W - C.x + halfW + 10;        // começa inteira fora da tela
 
   Object.assign(preloaderHand.style, {
     right: "auto",
@@ -120,7 +138,7 @@ function layoutPreloaderPortrait() {
   gsap.set(preloaderHand, { rotation: rot, scale: k, transformOrigin: "50% 50%", x: 0, y: 0 });
 
   /* teia: a parte desenhada tem ~470 unidades do viewBox de largura */
-  const ww = Math.min(W * 0.58, 300), s = ww / 470;
+  const s = ww / 470;
   Object.assign(web.style, {
     left: (S.x - 290.001 * s) + "px",
     top: (S.y - 1012.34 * s) + "px",
@@ -131,9 +149,9 @@ function layoutPreloaderPortrait() {
   });
 
   /* fio: do centro da teia até o ponto dos dedos */
-  const m = web.getScreenCTM();
-  if (!m) return;
-  const p = new DOMPoint(K.x, K.y).matrixTransform(m.inverse());
+  const mt = web.getScreenCTM();
+  if (!mt) return;
+  const p = new DOMPoint(K.x, K.y).matrixTransform(mt.inverse());
   preloaderWebLine.setAttribute("d", `M290.001 1012.34L${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
 }
 
