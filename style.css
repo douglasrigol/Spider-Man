@@ -782,31 +782,31 @@ body {
 @media (orientation: portrait) and (max-width: 1024px) {
 
   /* ---------- PRELOADER ----------
-     Título no topo, teia e mão no meio da tela. A mão entra pela direita
-     até encostar na ponta do fio (o deslocamento está no main.js). */
+     Mesma composição do desktop: título no canto de cima, mão entrando pela
+     direita, teia no canto de baixo e o fio ligando as duas (a ponta do fio
+     é apontada para a mão no main.js). */
   .preloader__title {
-    left: 50%;
-    top: max(9svh, 48px);
-    width: min(62vw, 420px);
-    margin-left: calc(min(62vw, 420px) / -2);
+    left: 6vw;
+    top: max(7svh, 44px);
+    width: min(58vw, 420px);
   }
 
-  .preloader__web {
-    --web-w: 92vw;
-    --web-h: calc(var(--web-w) * 1444 / 1804);
-    left: -4vw;
-    top: 50%;
-    bottom: auto;
-    width: var(--web-w);
-    height: var(--web-h);
-    margin-top: calc(var(--web-h) / -2);
-  }
-
-  /* começa fora da tela, à direita; o main.js traz a palma até a ponta do fio */
   .preloader__hand {
-    width: min(46vw, 320px);
-    right: calc(min(46vw, 320px) * -1.15);
-    top: calc(50% - 92vw * 1444 / 1804 * .2015 - min(46vw, 320px) * .7);
+    width: 62vw;
+    height: calc(62vw * 83 / 76);
+    right: -66vw;
+    top: calc(30svh - 62vw * 83 / 76 / 2);
+  }
+
+  /* A teia é desenhada grande o bastante para a ponta ter ~42vw de largura */
+  .preloader__web {
+    --s: calc(42vw / 470);
+    left: calc(10vw - 290 * var(--s));
+    top: calc(76svh - 1012 * var(--s));
+    bottom: auto;
+    width: calc(1804 * var(--s));
+    height: calc(1444 * var(--s));
+    overflow: visible;
   }
 
   .preloader__count {
@@ -816,59 +816,56 @@ body {
   }
 
   /* ---------- HERO ----------
-     Logo e menu ganham uma faixa no topo, o lançamento uma faixa na base,
-     e o palco vira um retângulo de cantos arredondados entre as duas.
-     (o recorte com entalhes do desktop esticaria demais numa tela em pé) */
-  .stage {
-    inset: 68px 12px 84px;
-    clip-path: inset(0 round 22px);
-  }
+     O shape com recortes continua o mesmo; o main.js redesenha o caminho
+     dele na proporção da tela em pé, com cada recorte do tamanho do que
+     fica dentro (logo, menu e data de lançamento). */
+  .stage { inset: 10px; }
 
   .brand {
-    left: 16px;
-    top: 16px;
-    width: 112px;
-    height: 36px;
+    left: 14px;
+    top: 14px;
+    width: 82px;
+    height: 29px;
   }
-  .brand__spider { width: 27px; height: 36px; }
-  .brand__marvel { left: 48px; top: 7px; width: 57px; height: 22px; }
+  .brand__spider { width: 22px; height: 29px; }
+  .brand__marvel { left: 34px; top: 6px; width: 48px; height: 18px; }
 
   .nav {
     right: 14px;
-    top: 14px;
-    height: 40px;
-    gap: 14px;
+    top: 12px;
+    height: 34px;
+    gap: 10px;
   }
-  .nav__link { font-size: 12px; line-height: 18px; }
+  .nav__link { font-size: 11px; line-height: 16px; }
   .nav__cta {
-    padding: 9px 14px;
+    padding: 8px 11px;
     border-radius: 50px;
-    font-size: 12px;
-    line-height: 18px;
+    font-size: 11px;
+    line-height: 16px;
   }
 
   .release { left: 18px; bottom: 16px; }
-  .release__label { font-size: 11px; line-height: 16px; }
+  .release__label { font-size: 10px; line-height: 14px; }
   .release__date {
     margin-top: 0;
-    font-size: clamp(30px, 8vw, 52px);
+    font-size: clamp(26px, 7vw, 46px);
     line-height: 1.1;
   }
 
-  /* Logo em cima, sinopse embaixo, os dois centralizados no palco */
+  /* Logo no alto do palco e sinopse embaixo: o rosto dos frames fica livre no meio */
   .movie {
     left: 7%;
     width: 86%;
-    top: 50%;
+    top: 9%;
+    bottom: calc(clamp(84px, 22vw, 130px) + 30px);
     margin-top: 0;
-    transform: translateY(-50%);
     flex-direction: column;
     align-items: center;
-    gap: clamp(22px, 4svh, 40px);
+    justify-content: space-between;
   }
 
   .movie__title {
-    width: min(72vw, 460px);
+    width: min(70vw, 460px);
     height: auto;
   }
 
@@ -876,7 +873,7 @@ body {
     width: min(100%, 520px);
     margin-top: 0;
     font-size: clamp(15px, 4.1vw, 21px);
-    height: calc(7 * 1.5em);   /* 7 linhas: cabe o texto mais longo */
+    height: calc(6 * 1.5em);   /* 6 linhas: cabe o texto mais longo */
     text-align: center;
   }
   .movie__desc { font-size: 1em; line-height: 1.5em; }
@@ -893,9 +890,6 @@ body {
     width: 43.2%;
     height: 47.2%;
   }
-
-  /* Trailer: inteiro na tela (deitado, com faixas pretas), em vez de cortado */
-  .reveal__video { object-fit: contain; }
 
   .player__big {
     width: 76px;
