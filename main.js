@@ -98,7 +98,7 @@ function layoutPreloaderPortrait() {
   /* Mesma composição do desktop, em horizontal: teia à esquerda, mão girada
      60° à direita e o fio subindo 21° até os dedos. A mão e a teia são
      medidas para caber inteiras na largura. */
-  const ww = Math.min(W * 0.38, 300);          // largura da teia desenhada
+  const ww = Math.min(W * 0.52, 380);          // largura da teia desenhada
   const S = { x: m + ww * 0.56, y: H * 0.62 }; // centro da teia (tela)
   const rot = 60;
   const r = rot * Math.PI / 180;
@@ -106,11 +106,11 @@ function layoutPreloaderPortrait() {
   const dir = { x: Math.cos(21 * Math.PI / 180), y: -Math.sin(21 * Math.PI / 180) };
 
   let best = null;
-  for (let f = 0.5; f >= 0.2 && !best; f -= 0.02) {
+  for (let f = 0.46; f >= 0.2 && !best; f -= 0.02) {
     const hw = Math.min(W * f, 340), hh = hw * 83 / 76;
     const ox = (L.x - 0.5) * hw, oy = (L.y - 0.5) * hh;
     const halfW = k * (cr * hw + sr * hh) / 2;
-    for (let len = W * 0.5; len >= W * 0.22; len -= 2) {
+    for (let len = W; len >= W * 0.3; len -= 2) {
       const K = { x: S.x + len * dir.x, y: S.y + len * dir.y };
       const C = {
         x: K.x - k * (ox * Math.cos(r) - oy * Math.sin(r)),
