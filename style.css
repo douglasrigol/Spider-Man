@@ -791,24 +791,6 @@ body {
     width: min(58vw, 420px);
   }
 
-  .preloader__hand {
-    width: 62vw;
-    height: calc(62vw * 83 / 76);
-    right: -66vw;
-    top: calc(30svh - 62vw * 83 / 76 / 2);
-  }
-
-  /* A teia é desenhada grande o bastante para a ponta ter ~42vw de largura */
-  .preloader__web {
-    --s: calc(42vw / 470);
-    left: calc(10vw - 290 * var(--s));
-    top: calc(76svh - 1012 * var(--s));
-    bottom: auto;
-    width: calc(1804 * var(--s));
-    height: calc(1444 * var(--s));
-    overflow: visible;
-  }
-
   .preloader__count {
     right: 6vw;
     bottom: max(5svh, 28px);
