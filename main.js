@@ -71,6 +71,10 @@ let loadedItems = 0;
 
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/* Celular e tablet em pé: mesmo corte do @media do style.css */
+const isPortraitMobile = () =>
+  window.matchMedia("(orientation: portrait) and (max-width: 1024px)").matches;
+
     /* Entrada: a mão aparece antes da teia; linha e ponta ficam escondidas. */
 if (preloader && !reduceMotion) {
 
@@ -154,8 +158,10 @@ function updatePreloaderAnimation(pct) {
   if (pct >= 90 && !handStarted) {
     handStarted = true;
 
+    /* no desktop a mão anda 300px; em pé ela anda proporcional ao tamanho
+       dela, até a ponta do fio da teia */
     gsap.to(preloaderHand, {
-      x: -300,
+      x: isPortraitMobile() ? -preloaderHand.offsetWidth * 1.67 : -300,
       y: 0,
       duration: 0.7,
       ease: "power2.out"
@@ -338,8 +344,16 @@ function measurePush() {
   const box = stage.getBoundingClientRect();
   const centerX = box.left + box.width / 2;
 
-  titleGap = centerX - title.getBoundingClientRect().right;
-  textsGap = textBox.getBoundingClientRect().left - centerX;
+  if (isPortraitMobile()) {
+    /* Em pé, logo e sinopse ficam empilhados e centralizados: a máscara nasce
+       por dentro deles, então o empurrão só começa quando a borda dela chega
+       na borda de fora de cada um. */
+    titleGap = centerX - title.getBoundingClientRect().left;
+    textsGap = textBox.getBoundingClientRect().right - centerX;
+  } else {
+    titleGap = centerX - title.getBoundingClientRect().right;
+    textsGap = textBox.getBoundingClientRect().left - centerX;
+  }
   pushPad  = box.width * (40 / 1856);   // 40u de respiro
 
   /* O frame do trailer precisa nascer já com a altura final do .stage — é o
