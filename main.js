@@ -100,10 +100,13 @@ function layoutPreloaderPortrait() {
      na horizontal, sem giro extra. */
   const ww = Math.min(W * 0.6, 440);           // largura da teia desenhada
   const S = { x: W * 0.13, y: H * 0.9 };       // centro da teia (tela)
-  const rot = 60;
-  const r = rot * Math.PI / 180;
   const hw = Math.min(W * 0.66, 400), hh = hw * 83 / 76;
   const K = { x: W * 0.9, y: Math.max(H * 0.3, hw * 0.5) };   // fio termina nos dedos
+  /* giro da mão: a abertura entre os dedos aponta para a teia, e o fio passa
+     pelo meio dos dois dedos dobrados (no desktop: fio a 159°, mão em 60°) */
+  const ang = Math.atan2(S.y - K.y, S.x - K.x) * 180 / Math.PI;
+  const rot = 60 + (ang - 159);
+  const r = rot * Math.PI / 180;
   const ox = (L.x - 0.5) * hw, oy = (L.y - 0.5) * hh;
   const C = {
     x: K.x - k * (ox * Math.cos(r) - oy * Math.sin(r)),
