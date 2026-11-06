@@ -259,6 +259,15 @@ function updatePreloaderAnimation(pct) {
   }
 }
 
+/* Com a página já no lugar (preloader saindo), refaz as medidas: no celular a
+   altura e as fontes ainda podem ter mudado desde a primeira leitura. */
+function remeasureAll() {
+  resizeCanvas();
+  buildTimeline();
+  buildCast();
+  ScrollTrigger.refresh();
+}
+
 function revealSite() {
   if (!preloader) return;
 
@@ -275,6 +284,7 @@ function revealSite() {
     onComplete: () => {
       smoother.paused(false);
       preloader.remove();
+      remeasureAll();
     }
   })
     .to([preloaderTitle, preloaderHand, preloaderCount], { opacity: 1, duration: 1 })
@@ -727,6 +737,7 @@ function buildTimeline() {
   gsap.set(ring, { filter: isPortraitMobile() ? "invert(1)" : "invert(0)" });
   gsap.set(badge, { opacity: 1 });
   gsap.set(title, { opacity: 1 });
+  gsap.set(stage, { opacity: 1 });
 
   /* --- estado inicial do ato 2 --- */
   placeOverlays();
@@ -853,6 +864,12 @@ function buildTimeline() {
     duration: ACT_2 * 0.78,
     onUpdate: applyReveal
   }, ACT_1 + ACT_2 * 0.22);
+
+  /* Em pé, enquanto a faixa do trailer abre o palco (já escuro) se dissolve e
+     deixa só o vermelho em volta: sem o vazio preto em cima e embaixo dela. */
+  if (band) {
+    master.to(stage, { opacity: 0, ease: "power1.inOut", duration: ACT_2 * 0.35 }, ACT_1 + ACT_2 * 0.15);
+  }
 
   /* 3.6 — Com a máscara aberta, entra o botão de play */
   master.to(".player__big", {
