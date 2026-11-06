@@ -773,6 +773,214 @@ body {
   pointer-events: none;
 }
 
-@media (max-width: 700px){
- 
+/* ==========================================================================
+   CELULAR E TABLET (tela em pé)
+   O layout do Figma é 1920x1080 deitado; numa tela em pé, a unidade --u
+   (largura / 1920) deixa tudo minúsculo. Aqui cada bloco ganha medidas
+   próprias, em px / vw / svh, pensadas para a tela vertical.
+   ========================================================================== */
+@media (orientation: portrait) and (max-width: 1024px) {
+
+  /* ---------- PRELOADER ----------
+     Título no topo, teia e mão no meio da tela. A mão entra pela direita
+     até encostar na ponta do fio (o deslocamento está no main.js). */
+  .preloader__title {
+    left: 50%;
+    top: max(9svh, 48px);
+    width: min(62vw, 420px);
+    margin-left: calc(min(62vw, 420px) / -2);
+  }
+
+  .preloader__web {
+    --web-w: 92vw;
+    --web-h: calc(var(--web-w) * 1444 / 1804);
+    left: -4vw;
+    top: 50%;
+    bottom: auto;
+    width: var(--web-w);
+    height: var(--web-h);
+    margin-top: calc(var(--web-h) / -2);
+  }
+
+  /* começa fora da tela, à direita; o main.js traz a palma até a ponta do fio */
+  .preloader__hand {
+    width: min(46vw, 320px);
+    right: calc(min(46vw, 320px) * -1.15);
+    top: calc(50% - 92vw * 1444 / 1804 * .2015 - min(46vw, 320px) * .7);
+  }
+
+  .preloader__count {
+    right: 6vw;
+    bottom: max(5svh, 28px);
+    font-size: clamp(18px, 5vw, 30px);
+  }
+
+  /* ---------- HERO ----------
+     Logo e menu ganham uma faixa no topo, o lançamento uma faixa na base,
+     e o palco vira um retângulo de cantos arredondados entre as duas.
+     (o recorte com entalhes do desktop esticaria demais numa tela em pé) */
+  .stage {
+    inset: 68px 12px 84px;
+    clip-path: inset(0 round 22px);
+  }
+
+  .brand {
+    left: 16px;
+    top: 16px;
+    width: 112px;
+    height: 36px;
+  }
+  .brand__spider { width: 27px; height: 36px; }
+  .brand__marvel { left: 48px; top: 7px; width: 57px; height: 22px; }
+
+  .nav {
+    right: 14px;
+    top: 14px;
+    height: 40px;
+    gap: 14px;
+  }
+  .nav__link { font-size: 12px; line-height: 18px; }
+  .nav__cta {
+    padding: 9px 14px;
+    border-radius: 50px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .release { left: 18px; bottom: 16px; }
+  .release__label { font-size: 11px; line-height: 16px; }
+  .release__date {
+    margin-top: 0;
+    font-size: clamp(30px, 8vw, 52px);
+    line-height: 1.1;
+  }
+
+  /* Logo em cima, sinopse embaixo, os dois centralizados no palco */
+  .movie {
+    left: 7%;
+    width: 86%;
+    top: 50%;
+    margin-top: 0;
+    transform: translateY(-50%);
+    flex-direction: column;
+    align-items: center;
+    gap: clamp(22px, 4svh, 40px);
+  }
+
+  .movie__title {
+    width: min(72vw, 460px);
+    height: auto;
+  }
+
+  .movie__texts {
+    width: min(100%, 520px);
+    margin-top: 0;
+    font-size: clamp(15px, 4.1vw, 21px);
+    height: calc(7 * 1.5em);   /* 7 linhas: cabe o texto mais longo */
+    text-align: center;
+  }
+  .movie__desc { font-size: 1em; line-height: 1.5em; }
+
+  .scroll-badge {
+    right: 14px;
+    bottom: 14px;
+    width: clamp(84px, 22vw, 130px);
+    height: clamp(84px, 22vw, 130px);
+  }
+  .scroll-badge__hand {
+    left: 28.4%;
+    top: 25.9%;
+    width: 43.2%;
+    height: 47.2%;
+  }
+
+  /* Trailer: inteiro na tela (deitado, com faixas pretas), em vez de cortado */
+  .reveal__video { object-fit: contain; }
+
+  .player__big {
+    width: 76px;
+    height: 76px;
+    margin: -38px 0 0 -38px;
+  }
+
+  .player__bar {
+    width: calc(100vw - 32px);
+    bottom: max(28px, env(safe-area-inset-bottom, 0px));
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 50px;
+    backdrop-filter: blur(12px);
+  }
+  .player__toggle,
+  .player__mute,
+  .player__full { width: 38px; height: 38px; }
+  .player__icon { width: 22px; height: 22px; }
+  .player__seek { height: 32px; }
+  .player__track { height: 4px; border-radius: 2px; }
+  .player__time { font-size: 12px; line-height: 18px; }
+
+  /* ---------- ELENCO ----------
+     Nome no topo, foto no meio, lista com a aranha embaixo. */
+  .cast__info {
+    inset: 0;
+    width: auto;
+    transform: none;
+    display: block;
+    pointer-events: none;
+  }
+
+  .cast__label {
+    position: absolute;
+    left: 6vw;
+    top: max(5svh, 24px);
+    font-size: clamp(16px, 4.2vw, 28px);
+    line-height: 1.2;
+  }
+
+  .cast__person {
+    position: absolute;
+    left: 6vw;
+    right: 6vw;
+    top: calc(max(5svh, 24px) + clamp(30px, 7vw, 48px));
+    width: auto;
+    height: clamp(68px, 15vw, 120px);
+  }
+  .cast__slide { gap: 2px; }
+  .cast__name {
+    font-size: clamp(28px, 8vw, 60px);
+    line-height: 1.2;
+  }
+  .cast__role {
+    font-size: clamp(12px, 3.2vw, 18px);
+    line-height: 1.4;
+  }
+
+  .cast__picker {
+    position: absolute;
+    left: 6vw;
+    bottom: max(5svh, 24px);
+    gap: 14px;
+  }
+  .cast__indicator { width: 20px; }
+  .cast__track,
+  .cast__fill { width: 2px; margin-left: -1px; border-radius: 1px; }
+  .cast__spider {
+    width: 17px;
+    height: 21px;
+    margin-left: -8.5px;
+  }
+  .cast__list { gap: 8px; }
+  .cast__item {
+    font-size: clamp(12px, 3.1vw, 16px);
+    line-height: 1.5;
+  }
+
+  .cast__media {
+    left: 4vw;
+    right: 4vw;
+    top: calc(max(5svh, 24px) + clamp(30px, 7vw, 48px) + clamp(68px, 15vw, 120px) + 18px);
+    bottom: calc(max(5svh, 24px) + 6 * clamp(12px, 3.1vw, 16px) * 1.5 + 5 * 8px + 22px);
+    border-radius: 22px;
+  }
+  .cast__media::after { border-width: 1px; }
 }
