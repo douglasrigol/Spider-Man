@@ -891,6 +891,11 @@ body {
     height: 47.2%;
   }
 
+  /* O arquivo do trailer já vem com tarja preta gravada (91px em cima e 91px
+     embaixo, de 720). Em tela em pé essas tarjas viravam um vazio preto
+     enorme; a escala corta as duas e o vídeo ocupa a tela de ponta a ponta. */
+  .reveal__video { transform: scale(1.345); }
+
   .player__big {
     width: 76px;
     height: 76px;
