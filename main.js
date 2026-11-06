@@ -304,21 +304,42 @@ for (let i = 1; i <= FRAME_COUNT; i++) {
   const img = new Image();
   img.src = `assets/frames/ezgif-frame-${String(i).padStart(3, "0")}.jpg`;
   /* redesenha assim que cada imagem chega, para o canvas nunca ficar vazio */
-  img.addEventListener("load", () => { render(); bumpProgress(); }, { once: true });
+  img.addEventListener("load", () => {
+    render();
+    bumpProgress();
+    shrinkFrame(i - 1, img);
+  }, { once: true });
   /* uma imagem quebrada não pode travar o preloader para sempre */
   img.addEventListener("error", bumpProgress, { once: true });
   frames.push(img);
 }
 
+/* No celular, 59 frames de 1920x1080 decodificados ocupam ~500 MB e o Safari do
+   iPhone começa a descartar camadas (telas pretas e frames piscando). Em pé,
+   cada frame é convertido para um bitmap na altura do palco (uns 2 MB) e a
+   imagem original é solta. Se o navegador não suportar, fica como estava. */
+function shrinkFrame(index, img) {
+  if (!isPortraitMobile() || typeof createImageBitmap !== "function") return;
+  const st = document.querySelector(".stage");
+  const h = Math.round(st ? st.clientHeight : 0);
+  if (!h || !img.naturalHeight) return;
+  const w = Math.round(img.naturalWidth * h / img.naturalHeight);
+  createImageBitmap(img, { resizeWidth: w, resizeHeight: h, resizeQuality: "high" })
+    .then(bmp => { frames[index] = bmp; render(); })
+    .catch(() => {});
+}
+
 /* Desenha a imagem cobrindo o canvas (equivalente a background-size: cover) */
 function drawCover(img, alpha) {
-  if (!img || !img.naturalWidth) return;
+  const iw = img && (img.naturalWidth || img.width);     // Image ou ImageBitmap
+  const ih = img && (img.naturalHeight || img.height);
+  if (!iw || !ih) return;
 
   const cw = canvas.width;
   const ch = canvas.height;
-  const scale = Math.max(cw / img.naturalWidth, ch / img.naturalHeight);
-  const w = img.naturalWidth * scale;
-  const h = img.naturalHeight * scale;
+  const scale = Math.max(cw / iw, ch / ih);
+  const w = iw * scale;
+  const h = ih * scale;
 
   ctx.globalAlpha = alpha;
   ctx.drawImage(img, (cw - w) * FOCUS_X, (ch - h) * FOCUS_Y, w, h);
@@ -707,9 +728,23 @@ const player = (() => {
     if (e.key === " " && watching) { e.preventDefault(); toggle.click(); }
   });
 
-  preview();
+  /* Em pé, o vídeo (18 MB) só carrega e toca quando a faixa do trailer está
+     prestes a abrir, e pausa de novo ao sair: menos memória no iPhone. */
+  function sleep() { if (!watching && !video.paused) video.pause(); }
+  function wake() {
+    if (watching || !video.paused) return;
+    video.preload = "auto";
+    video.muted = true;
+    video.loop = true;
+    video.play().catch(() => {});
+  }
 
-  return { reset, setReady };
+  if (!isPortraitMobile()) {
+    video.preload = "auto";
+    preview();
+  }
+
+  return { reset, setReady, sleep, wake };
 })();
 
 
@@ -766,8 +801,12 @@ function buildTimeline() {
         const open = self.progress > 0.99;
         player.setReady(open);
         if (!open) player.reset();
+        if (isPortraitMobile()) {
+          if (self.progress > (ACT_1 / TL_DURATION) * 0.9) player.wake();
+          else player.sleep();
+        }
       },
-      onLeave: () => player.reset(),
+      onLeave: () => { player.reset(); if (isPortraitMobile()) player.sleep(); },
       onLeaveBack: () => player.reset()
     }
   });
