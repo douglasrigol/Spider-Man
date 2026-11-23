@@ -22,7 +22,23 @@ gsap.registerPlugin(ScrollTrigger, ScrollSmoother, SplitText, DrawSVGPlugin);
 /* ==========================================================================
    1 — ROLAGEM SUAVE
    ========================================================================== */
-const smoother = ScrollSmoother.create({
+/* Celular/tablet (toque): rolagem nativa, sem ScrollSmoother.
+   No iPhone (Safari e, principalmente, o navegador interno do Instagram) o
+   normalizeScroll + barras que aparecem e somem desalinham os pins e deixam
+   uma tela preta entre a hero e o elenco. No toque o smooth nem tem efeito. */
+const isTouch = window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+document.documentElement.classList.toggle("is-touch", isTouch);
+
+/* A barra de endereço do celular não deve recalcular os pins a cada rolagem */
+ScrollTrigger.config({ ignoreMobileResize: true });
+
+/* Altura de tela estável (só muda quando a largura muda, ex.: girar o
+   celular). Usada no lugar do 100dvh, que "pula" junto com a barra. */
+const setStableVh = () =>
+  document.documentElement.style.setProperty("--vh", window.innerHeight + "px");
+setStableVh();
+
+const smoother = isTouch ? null : ScrollSmoother.create({
   wrapper: "#smooth-wrapper",
   content: "#smooth-content",
   smooth: 2,          // segundos que a página leva para "alcançar" a rolagem
@@ -31,7 +47,11 @@ const smoother = ScrollSmoother.create({
 });
 
 /* Trava o scroll até o preloader liberar a página (ver seção 6, no fim). */
-smoother.paused(true);
+const lockScroll = locked => {
+  if (smoother) smoother.paused(locked);
+  else document.documentElement.classList.toggle("is-locked", locked);
+};
+lockScroll(true);
 
 
 /* ==========================================================================
@@ -272,7 +292,7 @@ function revealSite() {
   if (!preloader) return;
 
   if (reduceMotion) {
-    smoother.paused(false);
+    lockScroll(false);
     preloader.classList.add("preloader--hidden");
     preloader.addEventListener("transitionend", () => preloader.remove(), { once: true });
     return;
@@ -282,7 +302,7 @@ function revealSite() {
       único da cortina do preloader. */
   gsap.timeline({
     onComplete: () => {
-      smoother.paused(false);
+      lockScroll(false);
       preloader.remove();
       remeasureAll();
     }
@@ -1095,6 +1115,7 @@ window.addEventListener("resize", () => {
 
   if (window.innerWidth === lastWidth) return;
   lastWidth = window.innerWidth;
+  setStableVh();
 
   clearTimeout(resizeTimer);
   resizeTimer = setTimeout(() => {

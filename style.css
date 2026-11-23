@@ -998,3 +998,30 @@ body {
   }
   .cast__media::after { border-width: 1px; }
 }
+
+
+/* ==========================================================================
+   TOQUE (celular/tablet): rolagem nativa, sem ScrollSmoother
+   Os wrappers deixam de ser uma "janela" fixa e as sessões fixadas usam a
+   altura estável --vh (medida no main.js) em vez de 100dvh, que muda quando
+   a barra do navegador aparece/some e desalinhava os pins no iPhone.
+   ========================================================================== */
+html.is-touch #smooth-wrapper {
+  position: static;
+  height: auto;
+  overflow: visible;
+}
+
+html.is-touch #smooth-content { will-change: auto; }
+
+html.is-touch .hero,
+html.is-touch .cast {
+  height: var(--vh, 100svh);
+}
+
+/* enquanto o preloader está na tela */
+html.is-locked,
+html.is-locked body {
+  overflow: hidden;
+  touch-action: none;
+}
